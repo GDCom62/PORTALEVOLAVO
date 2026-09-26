@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "lavanderia-v26",
+  "private_key_id": "5d948e54963bfefcb51f519a92ac0c86eb7c12a9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCm3MukzJmRK4bJ\nEl6keE0dGBTf9/uAF48/n1ut4u8/t/53J0Civ4pu+gtw+6XUenzi587q8YIrzxYs\n2vpjwnQycHEKy04ETzDh8Gdj2kQkdQIhqMjJaMTJ0ysCw63t4bpTWAeE0vEHRqDz\n2KlkzlqnfDFK5ZlWGzmPU8eGkSftg6FB7Ay13rsiqn6/kOmSDIfrfxeRfPg1VvVe\nmLBZW8wXc06sGiO+0ikJSqurmxb3kMjNkHej9A2y0dMwiE3MkFt7YhZH6XXr+Amf\nfFVm1wTXpRuq/mua+mkwpOvo9UCvTZ0vVTwwFEMokPdDzkGFcgraHR7oOu6fhyHv\nKsLDQq4RAgMBAAECggEAFEFJXZUB/7GiTAplL28Ugkd78jeIoaMKfiE+qGAbpXcU\n5jsfMRpR6DiFVsbPWZhwTD1yHEoqgF2kHhgLTLyMLRrB2Br3epWv0/9iF4iFXM0Q\n0AvsaqmDeNHfvtdIx89utiMBj6WpATZ5P3xxjJVxgvL0C1jNWRrXLP8xIVRBveaa\nJ6sKpw2R7kwBqNiHeOyqXrVtlF0uUc5CKKqouJ3Sm7gnwOMsY7zgURtUKFj1k8lo\nx6qlOMEmg5sGD670b/QNx9+I6x+EBpdMbXDeM8NXNGl0W3Vg4ak1mMtJJFeD7i/w\nEzbTpVoqjNyoUn5/YB1ySIQXhUZ2HG0vwB5tdRewOQKBgQDeLECv35YI5cdBiX67\n44naGFbeTJXOdony8vqYvcHvWRiXwYRmRIugZixpKyAV+6NidDIGzt9KsXOcCNYh\nqpSerSzEh8gJeMq1KHAAlXOmzLemOdxs0HhvICgxVREtzGkbU26rx4RwKgyR/CdJ\nBcbJF02jN+X6ljS/CDClZhcsOQKBgQDARK5r49YhM3kf5HQlkN5jn3mtRVhZOwoS\nOhliL9/tCHiqnUaphGMuBjbdU++vY5oiGROgg3Y/upeO13CWMPijAQBjAXYJ8vSY\nzXTrCzBvsGS6OXFOiusI2tPhifh1chJNZLod3BimipV1/wyLo87qQAJD5+gLn6J/\n4ts4TTNAmQKBgGSIE7FBc+uMxfAC3mT4ng0hDFXEw9jLzLoxdnGdE99RKo6o01dP\nVvr6oMfp6rfnyNOpDmYEQAfVaiHF4dcUD/IJHIPFiR+4F8mHhb7N4aotYkCGWBao\n8oYeP/Gqs35My5bA1whF3MjATjXUqpYhVgTyVYAwsBEG3NFATHrbSksJAoGAUJJ3\npa7s5Sz07XCHW9bB223RR9NvmrUrG0hNqt/1LxgFuTn/irp39amVBFtQbmeHCBMK\nLpHo0/wV1z5haA9NosGgr9zE4pZ1+jLfdEBUI/n/vCqmWQvOQv+xGyr+e/k5wkUb\n2beKfQBGchRX5YzYAUKhsGNW0sgrCPzAcW+ossECgYBGn7qp+Ujwu3KrUXfUCWfx\n6SU4XOPmkOGaZc0SN3HXT8gWtdG4aVrNCPjJiXzrRiGZCkh7iYM50AHbZKvOMGlY\nrz7fQWsdFPztqxPQBQ0buYLAWetdq8bPhC8iOSbNcqvozMHV+IhxoVFC1KD7bhEB\nkq+KRpBywKRoyAGPtLhOqA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "lavlev@lavanderia-v26.iam.gserviceaccount.com",
+  "client_id": "114411858353263035553",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/lavlev%40lavanderia-v26.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
