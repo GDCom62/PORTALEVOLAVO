@@ -138,16 +138,19 @@ if not st.session_state['logado']:
         email = st.text_input("E-mail cadastrado", key="login_email")
         senha = st.text_input("Senha", type="password", key="login_pass")
         
-        if st.button("Entrar", use_container_width=True, key="btn_entrar"):
+               if st.button("Entrar", use_container_width=True, key="btn_entrar"):
             try:
                 supabase = get_supabase_client()
                 auth_res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                
+                # Se autenticou com sucesso, libera o acesso
                 if auth_res.user:
                     st.session_state['logado'] = True
+                    st.success("Acesso liberado! Recarregando...")
                     st.rerun()
-            except Exception:
-                st.error("E-mail ou senha incorretos no Supabase.")
-    st.stop()
+            except Exception as e:
+                # Modificado para te mostrar na tela qual é a resposta do erro do Supabase
+                st.error(f"Erro na Autenticação: {str(e)}")
 
 # --- HEADER DO SISTEMA (APÓS LOGIN SUCEDIDO) ---
 col_tit, col_log = st.columns(2)
