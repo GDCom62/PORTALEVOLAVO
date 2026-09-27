@@ -28,15 +28,18 @@ def get_supabase_client() -> Client:
 @st.cache_resource
 def get_postgres_connection():
     try:
-        return psycopg2.connect(POSTGRES_URI)
+        # Tenta ler do formato padrão dos Secrets
+        if "banco_dados" in st.secrets and "uri" in st.secrets["banco_dados"]:
+            link_conexao = st.secrets["banco_dados"]["uri"]
+        else:
+            # PLANO DE FUGA: Se o Streamlit falhar em ler o bloco, coloque o link direto aqui:
+            link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:SUA_SENHA_AQUI@://supabase.com"
+        
+        return psycopg2.connect(link_conexao)
     except Exception as e:
         st.error(f"Erro ao conectar ao banco PostgreSQL do Supabase: {e}")
         return None
-
-# Conexão PostgreSQL compartilhada (Usada no Código 2 da Lavanderia)
-db = get_postgres_connection()
-
-# Utilitário de leitura de credenciais REST API (Usada no Código 3 da Manutenção)
+        
 def obter_credenciais_rest():
     try:
         url = st.secrets["supabase"]["url"].strip().rstrip("/")
