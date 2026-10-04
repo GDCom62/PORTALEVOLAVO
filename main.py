@@ -29,7 +29,7 @@ def get_supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==============================================================================
-# 3. FUNÇÕES DE BANCO DE DADOS DIRETO VIA REST API (Para os Módulos 2 e 3)
+# 3. FUNÇÕES DE BANCO DE DADOS DIRETO VIA REST API (Para os Módulos 1, 2 e 3)
 # ==============================================================================
 def buscar_dados(tabela: str):
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -87,3 +87,62 @@ def excluir_dados(tabela: str, coluna_id: str, valor_id):
 
 # Itens fixos globais do Módulo de Dobragem
 ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
+
+# ==============================================================================
+# 4. CONTROLE DE SESSÃO GLOBAL E LOGIN UNIFICADO
+# ==============================================================================
+if 'logado' not in st.session_state:
+    st.session_state['logado'] = False
+if 'edit_item' not in st.session_state:
+    st.session_state['edit_item'] = None
+if "editando_maquina_id" not in st.session_state:
+    st.session_state.editando_maquina_id = None
+if "editando_os_id" not in st.session_state:
+    st.session_state.editando_os_id = None
+
+# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ ---
+if not st.session_state['logado']:
+    col_l1, col_l2, col_l3 = st.columns(3)
+    with col_l2:
+        try:
+            st.image("logo.png", use_container_width=True)
+        except Exception:
+            st.caption("📷 *[Insira o arquivo logo.png no seu diretório]*")
+    
+    col_b1, col_b2, col_b3 = st.columns(3)
+    with col_b2:
+        st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
+        email = st.text_input("E-mail cadastrado", key="chave_limpa_email_portal")
+        senha = st.text_input("Senha", type="password", key="chave_limpa_senha_portal")
+        
+        if st.button("Entrar", use_container_width=True, key="btn_entrar_portal_limpo"):
+            try:
+                supabase = get_supabase_client()
+                auth_res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                if auth_res.user:
+                    st.session_state['logado'] = True
+                    st.success("Acesso liberado! Recarregando...")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Erro na Autenticação: {str(e)}")
+    st.stop()
+
+# --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
+col_tit, col_log = st.columns(2)
+with col_tit:
+    st.title("🚀 Central de Operações - Lavo e Levo")
+with col_log:
+    st.write("<br>", unsafe_allow_html=True)
+    if st.button("Sair (Logout)", use_container_width=True, key="btn_logout_central_limpo"):
+        try:
+            supabase = get_supabase_client()
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+        st.session_state['logado'] = False
+        st.session_state['edit_item'] = None
+        st.session_state.editando_maquina_id = None
+        st.session_state.editando_os_id = None
+        st.rerun()
+
+aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
