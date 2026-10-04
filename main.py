@@ -32,7 +32,7 @@ def get_supabase_client() -> Client:
 def get_postgres_connection():
     try:
         # Colocamos o link direto da nuvem aqui para não depender de arquivos externos:
-        link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:COLOQUE_A_SUA_NOVA_SENHA_AQUI@://supabase.com"
+        link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:123@://supabase.com"
         
         return psycopg2.connect(link_conexao)
     except Exception as e:
