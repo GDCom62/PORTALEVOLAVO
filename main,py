@@ -12,14 +12,18 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="🚀")
 
 # ==============================================================================
-# 2. CREDENCIAIS E CONEXÕES CENTRAIS (Supabase API, Postgres & Rest API)
+# 2. CREDENCIAIS E CONEXÕES CENTRAIS (Leitura Automática de Segredos)
 # ==============================================================================
-# IMPORTANTE: Substitua pelas chaves reais do seu projeto Supabase
-SUPABASE_URL = "https://supabase.co"
-SUPABASE_KEY = "sua-chave-anonima-longa-aqui"
+def obter_credenciais_supabase():
+    try:
+        url = st.secrets["supabase"]["url"].strip().rstrip("/")
+        key = st.secrets["supabase"]["key"].strip()
+        return url, key
+    except Exception:
+        # Fallback padrão caso os segredos estejam sendo carregados de outra forma
+        return "https://supabase.co", "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
 
-# O código busca a URI do banco operado pelo psycopg2 nos Secrets, se não achar usa o padrão
-POSTGRES_URI = st.secrets["banco_dados"]["uri"] if "banco_dados" in st.secrets else "postgresql://postgres:senha@db.supabase.co:5432/postgres"
+SUPABASE_URL, SUPABASE_KEY = obter_credenciais_supabase()
 
 @st.cache_resource
 def get_supabase_client() -> Client:
@@ -28,34 +32,27 @@ def get_supabase_client() -> Client:
 @st.cache_resource
 def get_postgres_connection():
     try:
-        return psycopg2.connect(POSTGRES_URI)
+        # Se houver configuração explícita nos secrets, utiliza ela. Caso contrário, usa a URI ajustada.
+        if "banco_dados" in st.secrets and "uri" in st.secrets["banco_dados"]:
+            link_conexao = st.secrets["banco_dados"]["uri"]
+        else:
+            link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:SUA_SENHA_REAL_AQUI@://supabase.com"
+        return psycopg2.connect(link_conexao)
     except Exception as e:
         st.error(f"Erro ao conectar ao banco PostgreSQL do Supabase: {e}")
         return None
 
-# Conexão PostgreSQL compartilhada (Usada no Código 2 da Lavanderia)
+# Instancia a conexão do PostgreSQL que será usada pelo Módulo de Lavanderia
 db = get_postgres_connection()
 
-# Utilitário de leitura de credenciais REST API (Usada no Código 3 da Manutenção)
-def obter_credenciais_rest():
-    try:
-        url = st.secrets["supabase"]["url"].strip().rstrip("/")
-        key = st.secrets["supabase"]["key"].strip()
-        return url, key
-    except Exception:
-        # Fallback utilizando as variáveis superiores caso não existam nos secrets locais
-        return SUPABASE_URL.strip().rstrip("/"), SUPABASE_KEY.strip()
-
-SUBAPASE_URL_REST, SUPABASE_KEY_REST = obter_credenciais_rest()
-
 # ==============================================================================
-# 3. FUNÇÕES DA REST API (Isoladas para o Código 3)
+# 3. FUNÇÕES DE BANCO DE DADOS DIRETO VIA REST API (Para o Módulo de Manutenção)
 # ==============================================================================
 def buscar_dados(tabela: str):
-    if not SUBAPASE_URL_REST or not SUPABASE_KEY_REST:
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return []
-    headers = {"apikey": SUPABASE_KEY_REST, "Authorization": f"Bearer {SUPABASE_KEY_REST}"}
-    url = f"{SUBAPASE_URL_REST}/rest/v1/{tabela}?select=*"
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    url = f"{SUPABASE_URL}/rest/v1/{tabela}?select=*"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -65,14 +62,14 @@ def buscar_dados(tabela: str):
     return []
 
 def inserir_dados(tabela: str, payload: dict):
-    if not SUBAPASE_URL_REST or not SUPABASE_KEY_REST:
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return False
     headers = {
-        "apikey": SUPABASE_KEY_REST,
-        "Authorization": f"Bearer {SUPABASE_KEY_REST}",
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json"
     }
-    url = f"{SUBAPASE_URL_REST}/rest/v1/{tabela}"
+    url = f"{SUPABASE_URL}/rest/v1/{tabela}"
     try:
         response = requests.post(url, headers=headers, json=payload)
         return 200 <= response.status_code <= 299
@@ -80,14 +77,14 @@ def inserir_dados(tabela: str, payload: dict):
         return False
 
 def atualizar_dados(tabela: str, payload: dict, coluna_id: str, valor_id):
-    if not SUBAPASE_URL_REST or not SUPABASE_KEY_REST:
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return False
     headers = {
-        "apikey": SUPABASE_KEY_REST,
-        "Authorization": f"Bearer {SUPABASE_KEY_REST}",
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json"
     }
-    url = f"{SUBAPASE_URL_REST}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
+    url = f"{SUPABASE_URL}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
     try:
         response = requests.patch(url, headers=headers, json=payload)
         return 200 <= response.status_code <= 299
@@ -95,19 +92,18 @@ def atualizar_dados(tabela: str, payload: dict, coluna_id: str, valor_id):
         return False
 
 def excluir_dados(tabela: str, coluna_id: str, valor_id):
-    if not SUBAPASE_URL_REST or not SUPABASE_KEY_REST:
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return False
-    headers = {"apikey": SUPABASE_KEY_REST, "Authorization": f"Bearer {SUPABASE_KEY_REST}"}
-    url = f"{SUBAPASE_URL_REST}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    url = f"{SUPABASE_URL}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
     try:
         response = requests.delete(url, headers=headers)
         return 200 <= response.status_code <= 299
     except Exception:
         return False
 
-# Constante de itens usada no setor de dobragem
+# Itens fixos globais do Módulo 2 (Dobragem)
 ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
-
 # ==============================================================================
 # 4. CONTROLE DE SESSÃO GLOBAL E LOGIN UNIFICADO
 # ==============================================================================
@@ -132,27 +128,29 @@ if not st.session_state['logado']:
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
         st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
-        email = st.text_input("E-mail cadastrado", key="hmuw@live.com") 
-        senha = st.text_input("Senha", type="password", key="123")
+        email = st.text_input("E-mail cadastrado", key="chave_nova_email_portal")
+        senha = st.text_input("Senha", type="password", key="chave_nova_senha_portal")
         
-        if st.button("Entrar", use_container_width=True, key="btn_entrar"):
+        if st.button("Entrar", use_container_width=True, key="btn_entrar_portal"):
             try:
                 supabase = get_supabase_client()
                 auth_res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                
                 if auth_res.user:
                     st.session_state['logado'] = True
+                    st.success("Acesso liberado! Recarregando...")
                     st.rerun()
-            except Exception:
-                st.error("E-mail ou senha incorretos no Supabase.")
+            except Exception as e:
+                st.error(f"Erro na Autenticação: {str(e)}")
     st.stop()
 
-# --- HEADER DO SISTEMA (APÓS LOGIN SUCEDIDO) ---
+# --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
 col_tit, col_log = st.columns(2)
 with col_tit:
     st.title("🚀 Central de Operações - Lavo e Levo")
 with col_log:
     st.write("<br>", unsafe_allow_html=True)
-    if st.button("Sair (Logout)", use_container_width=True, key="btn_logout"):
+    if st.button("Sair (Logout)", use_container_width=True, key="btn_logout_central"):
         try:
             supabase = get_supabase_client()
             supabase.auth.sign_out()
@@ -164,10 +162,11 @@ with col_log:
         st.session_state.editando_os_id = None
         st.rerun()
 
-# --- MULTI-ABAS CENTRALIZADAS ---
+# --- CRIAÇÃO DAS MULTI-ABAS CENTRALIZADAS ---
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
+
 # ==============================================================================
-# CÓDIGO 1: PLANO DE AÇÃO 5W2H (ALOCADO NA ABA 1)
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1)
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
@@ -222,13 +221,12 @@ with aba1:
             if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
                 try:
                     supabase.table("Acoes").delete().eq("id_acao", id_selecionado).execute()
-                    st.success("Ação excluída!")
+                    st.success("Ação excluída com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")
-
 # ==============================================================================
-# CÓDIGO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
+# MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
 # ==============================================================================
 with aba2:
     st.header("🧼 Controle Operacional da Lavanderia")
@@ -327,8 +325,7 @@ with aba2:
                 st.success("✅ Gravado com sucesso!")
             except Exception as err:
                 st.error(f"Erro: {err}")
-
-        elif menu_l == "📊 Resumos e Análises" and db:
+    elif menu_l == "📊 Resumos e Análises" and db:
         st.subheader("📊 Painel Estatístico e Resumos")
         filtro = st.text_input("🔍 Filtrar por Cliente (Vazio para todos)", key="an_filtro")
         try:
@@ -396,12 +393,11 @@ with aba2:
             st.error(f"Erro ao carregar histórico: {err}")
 
 # ==============================================================================
-# CÓDIGO 3: GESTÃO DE MANUTENÇÃO & PT (ALOCADO NA ABA 3)
+# MÓDULO 3: GESTÃO DE MANUTENÇÃO & PT (ALOCADO NA ABA 3)
 # ==============================================================================
 with aba3:
     st.header("⚙️ Gestão de Manutenção & Emissão de PT")
     
-    # Navegação interna adaptada da barra lateral original do código 3
     menu_m = st.selectbox("Selecione a Ação de Manutenção:", [
         "🔍 Gerenciar Máquinas (Abas 1 & 2)",
         "📅 Ordens de Serviço (OS) (Aba 3)",
@@ -411,7 +407,6 @@ with aba3:
     
     st.write("---")
     
-    # Carregamento dinâmico dos dados via API REST do Supabase
     equipamentos = buscar_dados("maquinas")
     todos_agendamentos = buscar_dados("planejamento")
     historico_lista = buscar_dados("historico")
@@ -486,7 +481,8 @@ with aba3:
                             st.warning("Equipamento excluído permanentemente!")
                             st.rerun()
                 st.write("---")
-# --- SUB-TELA 2: ORDENS DE SERVIÇO ---
+
+    # --- SUB-TELA 2: ORDENS DE SERVIÇO ---
     elif menu_m == "📅 Ordens de Serviço (OS) (Aba 3)":
         st.subheader("📅 Planejamento & Ordens de Serviço (OS)")
         
@@ -500,7 +496,7 @@ with aba3:
                     edit_status = st.selectbox("Status:", ["Pendente", "Em Andamento", "Concluído"], index=["Pendente", "Em Andamento", "Concluído"].index(os_editar.get("status", "Pendente")) if os_editar.get("status") in ["Pendente", "Em Andamento", "Concluído"] else 0)
                     btn_salvar_os = st.form_submit_button("💾 Atualizar OS")
                     
-                if btn_salvar_os:
+                              if btn_salvar_os:
                     payload_os = {"titulo": edit_titulo, "status": edit_status}
                     if atualizar_dados("planejamento", payload_os, "id", os_editar["id"]):
                         st.success("🎉 Ordem de Serviço atualizada com sucesso!")
@@ -541,4 +537,3 @@ with aba3:
             if emitir:
                 st.success("PT gerada operacionalmente com sucesso!")
 
-    
