@@ -298,4 +298,219 @@ with aba2:
                 st.success("✅ Gravado com sucesso na nuvem!")
             else:
                 st.error("Erro ao gravar dados no Supabase.")
+    elif menu_l == "📊 Resumos e Análises":
+        st.subheader("📊 Painel Estatístico e Resumos")
+        filtro = st.text_input("🔍 Filtrar por Cliente (Vazio para todos)", key="an_filtro")
+        try:
+            setores = ["lavagem", "lavados", "secagem", "pesagem", "dobragem"]
+            df_geral = []
+            for s in setores:
+                dados_s = buscar_dados(s)
+                if dados_s:
+                    df_sec = pd.DataFrame(dados_s)
+                    # Cria a coluna sector para compatibilidade com o relatório original
+                    df_sec['sector'] = s
+                    if filtro and 'cliente' in df_sec.columns:
+                        df_sec = df_sec[df_sec['cliente'].str.contains(filtro, case=False, na=False)]
+                    if not df_sec.empty and 'executante' in df_sec.columns:
+                        df_geral.append(df_sec[['executante', 'sector']])
+            
+            st.subheader("1. Quantidade de Operações por Funcionário / Setor")
+            if df_geral:
+                res = pd.concat(df_geral, ignore_index=True).groupby(["executante", "sector"]).size().unstack(fill_value=0)
+                res["Total Geral"] = res.sum(axis=1)
+                st.dataframe(res, use_container_width=True)
+            else:
+                st.info("Nenhum dado encontrado para gerar relatórios operacionais.")
+                
+            st.subheader("2. Total de Peças Dobradas por Cliente e Executante")
+            dados_dob = buscar_dados("dobragem")
+            if dados_dob:
+                df_dob = pd.DataFrame(dados_dob)
+                if filtro and 'cliente' in df_dob.columns:
+                    df_dob = df_dob[df_dob['cliente'].str.contains(filtro, case=False, na=False)]
+                
+                cols_banco = [it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM]
+                # Garante que as colunas existem antes de agrupar
+                cols_existentes = [c for c in cols_banco if c in df_dob.columns]
+                
+                if not df_dob.empty and 'cliente' in df_dob.columns and 'executante' in df_dob.columns:
+                    mapeamento = {it.lower().replace("ç", "c").replace("ã", "a"): it for it in ITENS_DOBRAGEM}
+                    df_dob = df_dob.rename(columns=mapeamento)
+                    cols_exibicao = [mapeamento[c] for c in cols_existentes]
+                    
+                    res_pecas = df_dob.groupby(["cliente", "executante"])[cols_exibicao].sum()
+                    res_pecas["Total de Peças"] = res_pecas.sum(axis=1)
+                    st.dataframe(res_pecas, use_container_width=True)
+                else:
+                    st.info("Nenhum registro de dobras correspondente encontrado.")
+            else:
+                st.info("Nenhum registro de dobras encontrado.")
+        except Exception as err:
+            st.error(f"Erro nos relatórios: {err}")
+
+    elif menu_l == "🛠️ Histórico":
+        st.subheader("🛠️ Gerenciamento e Correção de Lançamentos")
+        s = st.selectbox("Selecione o Setor para visualização:", ["lavagem", "lavados", "secagem", "pesagem", "dobragem"])
+        f_cliente = st.text_input("🔍 Filtrar por Cliente (Opcional):", key="hist_fc")
+        f_colab = st.text_input("👤 Filtrar por Colaborador / Executante (Opcional):", key="hist_fe")
+        
+        try:
+            dados_hist = buscar_dados(s)
+            if dados_hist:
+                df_hist = pd.DataFrame(dados_hist)
+                if f_cliente and 'cliente' in df_hist.columns:
+                    df_hist = df_hist[df_hist['cliente'].str.contains(f_cliente, case=False, na=False)]
+                if f_colab and 'executante' in df_hist.columns:
+                    df_hist = df_hist[df_hist['executante'].str.contains(f_colab, case=False, na=False)]
+                    
+                if not df_hist.empty:
+                    st.dataframe(df_hist, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum registro encontrado no histórico para os filtros aplicados.")
+            else:
+                st.info("Nenhum registro encontrado para este setor.")
+        except Exception as err:
+            st.error(f"Erro ao carregar histórico: {err}")
+
+# ==============================================================================
+# MÓDULO 3: GESTÃO DE MANUTENÇÃO & PT (ALOCADO NA ABA 3)
+# ==============================================================================
+with aba3:
+    st.header("⚙️ Gestão de Manutenção & Emissão de PT")
+    
+    menu_m = st.selectbox("Selecione a Ação de Manutenção:", [
+        "🔍 Gerenciar Máquinas (Abas 1 & 2)",
+        "📅 Ordens de Serviço (OS) (Aba 3)",
+        "📜 Histórico de Trocas (Aba 4)",
+        "⚠️ Emissão de PT (Aba 5)"
+    ], key="nav_manutencao_interna")
+    
+    st.write("---")
+    
+    equipamentos = buscar_dados("maquinas")
+    todos_agendamentos = buscar_dados("planejamento")
+    historico_lista = buscar_dados("historico")
+
+    if menu_m == "🔍 Gerenciar Máquinas (Abas 1 & 2)":
+        st.subheader("🔍 Gerenciamento de Equipamentos")
+        
+        if st.session_state.editando_maquina_id is not None:
+            st.subheader("✏️ Editar Equipamento Registrado")
+            mq_editar = next((m for m in equipamentos if str(m["id"]) == str(st.session_state.editando_maquina_id)), None)
+            
+            if mq_editar:
+                with st.form("form_editar_maquina"):
+                    st.info(f"Editando Tag: {mq_editar.get('id')}")
+                    edit_nome = st.text_input("Nome do Equipamento:", value=mq_editar.get("nome", ""))
+                    edit_local = st.text_input("Localização / Setor:", value=mq_editar.get("localizacao", ""))
+                    edit_crit = st.selectbox("Criticidade:", ["Baixa", "Média", "Alta"], index=["Baixa", "Média", "Alta"].index(mq_editar.get("criticidade", "Baixa")) if mq_editar.get("criticidade") in ["Baixa", "Média", "Alta"] else 0)
+                    edit_sem = st.text_area("Checklist Semanal:", value=mq_editar.get("check_semanal", ""))
+                    edit_mes = st.text_area("Checklist Mensal:", value=mq_editar.get("check_mensal", ""))
+                    edit_ano = st.text_area("Checklist Anual:", value=mq_editar.get("check_anual", ""))
+                    btn_salvar_mq = st.form_submit_button("💾 Salvar Alterações")
+                    
+                if btn_salvar_mq:
+                    payload = {"nome": edit_nome, "localizacao": edit_local, "criticidade": edit_crit, "check_semanal": edit_sem, "check_mensal": edit_mes, "check_anual": edit_ano}
+                    if atualizar_dados("maquinas", payload, "id", mq_editar["id"]):
+                        st.success("🎉 Equipamento atualizado com sucesso!")
+                        st.session_state.editando_maquina_id = None
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar atualizações.")
+                
+                if st.button("❌ Cancelar Edição", key="cnc_ed_mq"):
+                    st.session_state.editando_maquina_id = None
+                    st.rerun()
+        else:
+            st.subheader("➕ Cadastrar Nova Máquina")
+            with st.form("form_cadastro_direto"):
+                id_eq = st.text_input("Tag do Equipamento (Ex: EQ-003):").strip()
+                nome_eq = st.text_input("Nome do Equipamento:").strip()
+                local_eq = st.text_input("Localização / Setor:")
+                crit_eq = st.selectbox("Criticidade:", ["Baixa", "Média", "Alta"])
+                st.markdown("##### 📜 Ações Preventivas")
+                c_sem = st.text_area("Checklist Semanal:", "1. Verificar nível de óleo; 2. Limpeza.")
+                c_mes = st.text_area("Checklist Mensal:", "1. Troca de filtros.")
+                c_ano = st.text_area("Checklist Anual:", "1. Revisão preventiva.")
+                botao_salvar = st.form_submit_button("Salvar Novo Equipamento")
+                
+            if botao_salvar and id_eq and nome_eq:
+                payload = {"id": id_eq, "nome": nome_eq, "localizacao": local_eq, "criticidade": crit_eq, "check_semanal": c_sem, "check_mensal": c_mes, "check_anual": c_ano}
+                if inserir_dados("maquinas", payload):
+                    st.success("🎉 Equipamento saved com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao inserir equipamento no banco de dados.")
+
+        st.markdown("---")
+        st.subheader("📋 Lista de Equipamentos Registrados")
+        if not equipamentos:
+            st.info("Nenhuma máquina encontrada na tabela 'maquinas' do Supabase.")
+        else:
+            for mq in equipamentos:
+                st.write(f"🔹 **[{mq.get('id')}] {mq.get('nome')}** | Setor: {mq.get('localizacao')} | Criticidade: {mq.get('criticidade')}")
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    if st.button(f"✏️ Editar {mq.get('id')}", key=f"ed_mq_{mq.get('id')}"):
+                        st.session_state.editando_maquina_id = mq.get('id')
+                        st.rerun()
+                with col_m2:
+                    if st.button(f"🗑️ Excluir {mq.get('id')}", key=f"ex_mq_{mq.get('id')}"):
+                        if excluir_dados("maquinas", "id", mq.get('id')):
+                            st.warning("Equipamento excluído permanentemente!")
+                            st.rerun()
+                st.write("---")
+
+    elif menu_m == "📅 Ordens de Serviço (OS) (Aba 3)":
+        st.subheader("📅 Planejamento & Ordens de Serviço (OS)")
+        
+        if st.session_state.editando_os_id is not None:
+            st.subheader("📝 Editar Ordem de Serviço Ativa")
+            os_editar = next((item for item in todos_agendamentos if str(item["id"]) == str(st.session_state.editando_os_id)), None)
+            
+            if os_editar:
+                with st.form("form_editar_os"):
+                    edit_titulo = st.text_input("Título / Descrição da OS:", value=os_editar.get("titulo", ""))
+                    edit_status = st.selectbox("Status:", ["Pendente", "Em Andamento", "Concluído"], index=["Pendente", "Em Andamento", "Concluído"].index(os_editar.get("status", "Pendente")) if os_editar.get("status") in ["Pendente", "Em Andamento", "Concluído"] else 0)
+                    btn_salvar_os = st.form_submit_button("💾 Atualizar OS")
+                    
+                if btn_salvar_os:
+                    payload_os = {"titulo": edit_titulo, "status": edit_status}
+                    if atualizar_dados("planejamento", payload_os, "id", os_editar["id"]):
+                        st.success("🎉 Ordem de Serviço updated com sucesso!")
+                        st.session_state.editando_os_id = None
+                        st.rerun()
+                    else:
+                        st.error("Erro ao atualizar a Ordem de Serviço no banco.")
+            
+            if st.button("❌ Cancelar Edição OS"):
+                st.session_state.editando_os_id = None
+                st.rerun()
+        else:
+            st.info("Nenhuma Ordem de Serviço selecionada para edição ativa.")
+            if todos_agendamentos:
+                df_os = pd.DataFrame(todos_agendamentos)
+                st.dataframe(df_os, use_container_width=True)
+            else:
+                st.info("Nenhum registro de OS agendado no banco.")
+
+    elif menu_m == "📜 Histórico de Trocas (Aba 4)":
+        st.subheader("📜 Histórico de Trocas de Componentes")
+        if historico_lista:
+            df_hist = pd.DataFrame(historico_lista)
+            st.dataframe(df_hist, use_container_width=True)
+        else:
+            st.info("Nenhum histórico de trocas encontrado.")
+
+    elif menu_m == "⚠️ Emissão de PT (Aba 5)":
+        st.subheader("⚠️ Emissão de Permissão de Trabalho (PT)")
+        st.write("Módulo de segurança operacional para liberação de atividades.")
+        with st.form("form_pt"):
+            local_pt = st.text_input("Local da Atividade:")
+            resp_pt = st.text_input("Responsável Técnico:")
+            riscos = st.multiselect("Riscos Detectados:", ["Elétrico", "Trabalho em Altura", "Espaço Confinado", "Químico"])
+            emitir = st.form_submit_button("Emitir Documento de PT")
+            if emitir:
+                st.success("PT gerada operacionalmente com sucesso!")
 
