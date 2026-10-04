@@ -31,10 +31,9 @@ def get_supabase_client() -> Client:
 @st.cache_resource
 def get_postgres_connection():
     try:
-        if "banco_dados" in st.secrets and "uri" in st.secrets["banco_dados"]:
-            link_conexao = st.secrets["banco_dados"]["uri"]
-        else:
-            link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:SUA_SENHA_REAL_AQUI@://supabase.com"
+        # Colocamos o link direto da nuvem aqui para não depender de arquivos externos:
+        link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:COLOQUE_A_SUA_NOVA_SENHA_AQUI@://supabase.com"
+        
         return psycopg2.connect(link_conexao)
     except Exception as e:
         st.error(f"Erro ao conectar ao banco PostgreSQL do Supabase: {e}")
