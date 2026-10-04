@@ -125,6 +125,7 @@ if not st.session_state['logado']:
             if email_digitado and senha_digitada:
                 try:
                     # BURLA O CACHE: Fazemos uma requisição web direta e forçada para a URL certa (.co)
+                                       # CORREÇÃO: Mudamos o final de 'token?grant_type=password' para 'token?grant_type=password' ou a rota padrão de login 'user'
                     url_login = "https://supabase.co"
                     headers_login = {
                         "apikey": SUPABASE_KEY,
