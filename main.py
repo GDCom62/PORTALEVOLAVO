@@ -146,3 +146,65 @@ with col_log:
         st.rerun()
 
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
+
+# ==============================================================================
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1)
+# ==============================================================================
+with aba1:
+    st.header("Plano de Ação Lavo e Levo")
+    
+    acoes = []
+    try:
+        supabase = get_supabase_client()
+        resposta = supabase.table("Acoes").select("*").order("prazo", ascending=True).execute()
+        acoes = resposta.data
+    except Exception as e:
+        st.error(f"Erro de conexão com a tabela Acoes: {e}")
+
+    st.subheader("📊 Distribuição de Status (Monitoramento)")
+    status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
+
+    if acoes:
+        for a in acoes:
+            status_atual = str(a.get('status', 'Não Iniciado')).strip().lower()
+            if "andamento" in status_atual:
+                status_contagem["Em Andamento"] += 1
+            elif "concluido" in status_atual or "concluído" in status_atual:
+                status_contagem["Concluído"] += 1
+            else:
+                status_contagem["Não Iniciado"] += 1
+
+    df_pizza = pd.DataFrame(list(status_contagem.items()), columns=["Status", "Quantidade"])
+
+    if df_pizza["Quantidade"].sum() > 0:
+        fig_pizza = px.pie(df_pizza, values='Quantidade', names='Status', hole=0.4,
+                           color='Status', color_discrete_map={'Não Iniciado': '#ff9999', 'Em Andamento': '#66b3ff', 'Concluído': '#99ff99'})
+        fig_pizza.update_layout(width=450, height=350, margin=dict(l=20, r=20, t=20, b=20),
+                                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
+        st.plotly_chart(fig_pizza, use_container_width=False)
+
+    st.write("---")
+    st.subheader("📋 Ações Registradas")
+    if acoes:
+        df_tabela = pd.DataFrame(acoes)
+        colunas_esperadas = ["id_acao", "descricao_acao", "porque", "onde", "id_responsavel", "prazo", "como", "quando_detalhe", "status", "url_arquivo"]
+        df_tabela = df_tabela.reindex(columns=colunas_esperadas)
+        df_tabela.columns = ["ID", "Descrição (O que)", "Por que", "Onde", "ID Resp.", "Prazo", "Como", "Quando Det.", "Status", "Link Arquivo"]
+        st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+        
+        col_sel, col_btn_ed, col_btn_ex = st.columns(3)
+        with col_sel:
+            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", [a['id_acao'] for a in acoes], key="sel_id_aba1")
+        with col_btn_ed:
+            if st.button("✏️ Editar Selecionado", key="ed_bt_a1"):
+                st.session_state['edit_item'] = next((item for item in acoes if item["id_acao"] == id_selecionado), None)
+                st.success(f"Item {id_selecionado} carregado!")
+        with col_btn_ex:
+            if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
+                try:
+                    supabase.table("Acoes").delete().eq("id_acao", id_selecionado).execute()
+                    st.success("Ação excluída com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao excluir: {e}")
+
