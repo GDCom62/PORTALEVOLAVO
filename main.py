@@ -103,7 +103,7 @@ if "editando_maquina_id" not in st.session_state:
 if "editando_os_id" not in st.session_state:
     st.session_state.editando_os_id = None
 
-# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (VERSÃO WEB DIRECT) ---
+# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (SISTEMA DE SEGURANÇA LOCAL) ---
 if not st.session_state['logado']:
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l2:
@@ -122,34 +122,17 @@ if not st.session_state['logado']:
             botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
             
         if botao_entrar:
-            if email_digitado and senha_digitada:
-                try:
-                    # BURLA O CACHE: Fazemos uma requisição web direta e forçada para a URL certa (.co)
-                                       # CORREÇÃO: Mudamos o final de 'token?grant_type=password' para 'token?grant_type=password' ou a rota padrão de login 'user'
-                    url_login = "https://supabase.co"
-                    headers_login = {
-                        "apikey": SUPABASE_KEY,
-                        "Content-Type": "application/json"
-                    }
-                    payload_login = {
-                        "email": email_digitado.strip(),
-                        "password": senha_digitada.strip()
-                    }
-                    
-                    resposta_web = requests.post(url_login, headers=headers_login, json=payload_login)
-                    
-                    if resposta_web.status_code == 200:
-                        st.session_state['logado'] = True
-                        st.success("🎉 Acesso liberado! Entrando...")
-                        st.rerun()
-                    elif resposta_web.status_code == 400:
-                        st.error("E-mail ou senha incorretos na base do Supabase.")
-                    else:
-                        st.error(f"Erro de Resposta ({resposta_web.status_code}): {resposta_web.text}")
-                except Exception as e:
-                    st.error(f"Erro de Conexão na Autenticação: {str(e)}")
+            # 🔐 DEfine as credenciais de acesso direto no código
+            # Mude os valores abaixo para o e-mail e a senha que você preferir usar:
+            email_correto = "admin@lavolevo.com"
+            senha_correta = "LavoLevo2026"
+            
+            if email_digitado.strip() == email_correto and senha_digitada.strip() == senha_correta:
+                st.session_state['logado'] = True
+                st.success("🎉 Acesso liberado! Entrando...")
+                st.rerun()
             else:
-                st.warning("⚠️ Por favor, preencha o e-mail e a senha.")
+                st.error("❌ E-mail ou senha incorretos. Tente novamente.")
     st.stop()
   
 # --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
