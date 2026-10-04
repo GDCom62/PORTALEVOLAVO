@@ -37,10 +37,6 @@ def get_supabase_client() -> Client:
     )
     return create_client(SUPABASE_URL, SUPABASE_KEY, options=opcoes)
 
-@st.cache_resource
-def get_supabase_client() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
 # ==============================================================================
 # 3. FUNÇÕES DE BANCO DE DADOS DIRETO VIA REST API (Para os Módulos 1, 2 e 3)
 # ==============================================================================
