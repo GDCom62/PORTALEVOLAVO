@@ -11,7 +11,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="🚀")
 
 # ==============================================================================
-# 2. CREDENCIAIS E CONEXÕES CENTRAIS (REST API E CLIENT)
+# 2. CREDENCIAIS E CONEXÕES CENTRAIS (REST API E CLIENT BLINDADO)
 # ==============================================================================
 def obter_credenciais_supabase():
     try:
@@ -19,10 +19,23 @@ def obter_credenciais_supabase():
         key = st.secrets["supabase"]["key"].strip()
         return url, key
     except Exception:
-        # FORÇADO: Certifique-se de que aqui termina com .co e não .com
+        # ENDEREÇO DA SUA COOPERATIVA FORÇADO COM .CO
         return "https://supabase.co", "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
 
 SUPABASE_URL, SUPABASE_KEY = obter_credenciais_supabase()
+
+@st.cache_resource
+def get_supabase_client() -> Client:
+    from supabase.lib.client_options import ClientOptions
+    
+    # Forçamos a biblioteca a usar rigorosamente a sua URL com .co em todas as requisições
+    opcoes = ClientOptions(
+        auth=dict(
+            url=f"{SUPABASE_URL}/auth/v1",
+            storage_key="lavo-levo-auth-key"
+        )
+    )
+    return create_client(SUPABASE_URL, SUPABASE_KEY, options=opcoes)
 
 @st.cache_resource
 def get_supabase_client() -> Client:
