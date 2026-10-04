@@ -15,12 +15,11 @@ st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", pag
 # ==============================================================================
 def obter_credenciais_supabase():
     try:
-        # Se houver configuração correta nos secrets, ele tenta ler
         url = st.secrets["supabase"]["url"].strip().rstrip("/")
         key = st.secrets["supabase"]["key"].strip()
         return url, key
     except Exception:
-        # CORREÇÃO CRUCIAL: Ajustado o final de '.com' para '.co' com o seu ID real
+        # FORÇADO: Certifique-se de que aqui termina com .co e não .com
         return "https://supabase.co", "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
 
 SUPABASE_URL, SUPABASE_KEY = obter_credenciais_supabase()
