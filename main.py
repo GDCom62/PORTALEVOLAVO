@@ -103,7 +103,7 @@ if "editando_maquina_id" not in st.session_state:
 if "editando_os_id" not in st.session_state:
     st.session_state.editando_os_id = None
 
-# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ ---
+# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (VERSÃO WEB DIRECT) ---
 if not st.session_state['logado']:
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l2:
@@ -116,28 +116,37 @@ if not st.session_state['logado']:
     with col_b2:
         st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
         
-        # Envelopamos os campos em um form para o Streamlit segurar os textos digitados
         with st.form("formulario_login_seguro"):
             email_digitado = st.text_input("E-mail cadastrado", key="chave_form_email")
             senha_digitada = st.text_input("Senha", type="password", key="chave_form_senha")
-            
-            # O botão dentro de um form precisa ser obrigatoriamente um form_submit_button
             botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
             
         if botao_entrar:
             if email_digitado and senha_digitada:
                 try:
-                    supabase = get_supabase_client()
-                    auth_res = supabase.auth.sign_in_with_password({
-                        "email": email_digitado.strip(), 
+                    # BURLA O CACHE: Fazemos uma requisição web direta e forçada para a URL certa (.co)
+                    url_login = "https://supabase.co"
+                    headers_login = {
+                        "apikey": SUPABASE_KEY,
+                        "Content-Type": "application/json"
+                    }
+                    payload_login = {
+                        "email": email_digitado.strip(),
                         "password": senha_digitada.strip()
-                    })
-                    if auth_res.user:
+                    }
+                    
+                    resposta_web = requests.post(url_login, headers=headers_login, json=payload_login)
+                    
+                    if resposta_web.status_code == 200:
                         st.session_state['logado'] = True
                         st.success("🎉 Acesso liberado! Entrando...")
                         st.rerun()
+                    elif resposta_web.status_code == 400:
+                        st.error("E-mail ou senha incorretos na base do Supabase.")
+                    else:
+                        st.error(f"Erro de Resposta ({resposta_web.status_code}): {resposta_web.text}")
                 except Exception as e:
-                    st.error(f"Erro na Autenticação: {str(e)}")
+                    st.error(f"Erro de Conexão na Autenticação: {str(e)}")
             else:
                 st.warning("⚠️ Por favor, preencha o e-mail e a senha.")
     st.stop()
