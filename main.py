@@ -155,16 +155,18 @@ with col_log:
 
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO REST API INTEGRADA
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO COMPLETA COM CADASTRO E BUSCA BLINDADA
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
     
-    # Inicializa a contagem preventivamente para evitar panes visuais
+    # Inicializa a contagem preventivamente para o gráfico de pizza
     status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
     
-    # Busca os dados via REST API direta (Usando a rota segura .co da sua cooperativa)
+    # 🔍 BUSCA BLINDADA: Tenta buscar com "Acoes" (Maiúsculo), se vier vazio tenta "acoes" (Minúsculo)
     acoes = buscar_dados("Acoes")
+    if not acoes:
+        acoes = buscar_dados("acoes")
 
     st.subheader("📊 Distribuição de Status (Monitoramento)")
 
@@ -188,7 +190,54 @@ with aba1:
                                 legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
         st.plotly_chart(fig_pizza, use_container_width=False)
     else:
-        st.info("💡 Adicione ou altere o status de uma ação para visualizar o gráfico.")
+        st.info("💡 Nenhuma ação encontrada para gerar o gráfico. Cadastre uma nova ação abaixo!")
+
+    # 🆕 FORMULÁRIO DE CADASTRO (O que faltava para registrar novos itens)
+    st.write("---")
+    st.subheader("➕ Registrar Nova Ação (5W2H)")
+    
+    with st.form("form_cadastro_plano_acao"):
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            desc = st.text_input("O que fazer? (Descrição da Ação):")
+            porque = st.text_input("Por que fazer? (Justificativa):")
+            onde = st.text_input("Onde será feito? (Local/Setor):")
+            resp = st.text_input("Quem vai fazer? (Nome/ID do Responsável):")
+        with col_f2:
+            prazo = st.date_input("Até quando? (Prazo):", datetime.date.today())
+            como = st.text_area("Como será feito? (Método/Processo):")
+            quando_det = st.text_input("Quando detalhado? (Frequência/Turno):")
+            status_nova = o = st.selectbox("Qual o status atual?", ["Não Iniciado", "Em Andamento", "Concluído"])
+            
+        botao_gravar_acao = st.form_submit_button("💾 Salvar Ação no Supabase")
+        
+        if botao_gravar_acao:
+            if desc and resp:
+                # Monta o pacote de dados exatamente no padrão das colunas do seu banco
+                payload_nova_acao = {
+                    "descricao_acao": desc,
+                    "porque": porque,
+                    "onde": onde,
+                    "id_responsavel": resp,
+                    "prazo": prazo.strftime('%Y-%m-%d'),
+                    "como": como,
+                    "quando_detalhe": quando_det,
+                    "status": status_nova
+                }
+                
+                # Tenta inserir na tabela Acoes
+                sucesso = inserir_dados("Acoes", payload_nova_acao)
+                if not sucesso:
+                    # Se falhar por nome de tabela, tenta em minúsculo
+                    sucesso = inserir_dados("acoes", payload_nova_acao)
+                    
+                if sucesso:
+                    st.success("🎉 Nova ação registrada com sucesso no Supabase!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao tentar salvar a ação. Verifique se a tabela possui RLS desativada no Supabase.")
+            else:
+                st.error("⚠️ Os campos 'Descrição' e 'Responsável' são obrigatórios!")
 
     st.write("---")
     st.subheader("📋 Ações Registradas")
@@ -201,14 +250,19 @@ with aba1:
         
         col_sel, col_btn_ed, col_btn_ex = st.columns(3)
         with col_sel:
-            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", [a['id_acao'] for a in acoes], key="sel_id_aba1")
+            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", [a.get('id_acao', a.get('id')) for a in acoes], key="sel_id_aba1")
         with col_btn_ed:
             if st.button("✏️ Editar Selecionado", key="ed_bt_a1"):
-                st.session_state['edit_item'] = next((item for item in acoes if item["id_acao"] == id_selecionado), None)
+                st.session_state['edit_item'] = next((item for item in acoes if item.get("id_acao") == id_selecionado or item.get("id") == id_selecionado), None)
                 st.success(f"Item {id_selecionado} carregado!")
         with col_btn_ex:
             if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
-                if excluir_dados("Acoes", "id_acao", id_selecionado):
+                # Tenta deletar usando a chave id_acao ou id padrão
+                sucesso_ex = excluir_dados("Acoes", "id_acao", id_selecionado) or excluir_dados("Acoes", "id", id_selecionado)
+                if not sucesso_ex:
+                    sucesso_ex = excluir_dados("acoes", "id_acao", id_selecionado) or excluir_dados("acoes", "id", id_selecionado)
+                    
+                if sucesso_ex:
                     st.success("Ação excluída com sucesso!")
                     st.rerun()
                 else:
