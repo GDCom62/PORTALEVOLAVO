@@ -113,19 +113,29 @@ if not st.session_state['logado']:
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
         st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
-        email = st.text_input("E-mail cadastrado", key="chave_limpa_email_portal")
-        senha = st.text_input("Senha", type="password", key="chave_limpa_senha_portal")
+        
+        # Armazena os valores digitados diretamente nestas variáveis
+        email_digitado = st.text_input("E-mail cadastrado", key="chave_limpa_email_portal")
+        senha_digitada = st.text_input("Senha", type="password", key="chave_limpa_senha_portal")
         
         if st.button("Entrar", use_container_width=True, key="btn_entrar_portal_limpo"):
-            try:
-                supabase = get_supabase_client()
-                auth_res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
-                if auth_res.user:
-                    st.session_state['logado'] = True
-                    st.success("Acesso liberado! Recarregando...")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Erro na Autenticação: {str(e)}")
+            # Verifica se o usuário não deixou os campos em branco no navegador
+            if email_digitado and senha_digitada:
+                try:
+                    supabase = get_supabase_client()
+                    # Envia as variáveis corretas com os dados digitados
+                    auth_res = supabase.auth.sign_in_with_password({
+                        "email": email_digitado, 
+                        "password": senha_digitada
+                    })
+                    if auth_res.user:
+                        st.session_state['logado'] = True
+                        st.success("Acesso liberado! Recarregando...")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Erro na Autenticação: {str(e)}")
+            else:
+                st.warning("⚠️ Por favor, preencha o e-mail e a senha antes de clicar em entrar.")
     st.stop()
 
 # --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
