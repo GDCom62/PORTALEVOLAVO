@@ -11,22 +11,16 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="🚀")
 
 # ==============================================================================
-# 2. CREDENCIAIS E CONEXÕES CENTRAIS (REST API E CLIENT BLINDADO)
+# 2. CREDENCIAIS E CONEXÕES CENTRAIS (VERSÃO ATUALIZADA E DIRETAL)
 # ==============================================================================
-def obter_credenciais_supabase():
-    try:
-        url = st.secrets["supabase"]["url"].strip().rstrip("/")
-        key = st.secrets["supabase"]["key"].strip()
-        return url, key
-    except Exception:
-        # ENDEREÇO DA SUA COOPERATIVA FORÇADO COM .CO
-        return "https://supabase.co", "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
-
-SUPABASE_URL, SUPABASE_KEY = obter_credenciais_supabase()
+# Endereço correto da sua empresa (terminando em .co)
+SUPABASE_URL = "https://supabase.co"
+SUPABASE_KEY = "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
 
 @st.cache_resource
 def get_supabase_client() -> Client:
-    from supabase.lib.client_options import ClientOptions
+    # Cria o cliente de forma direta, eliminando o bloco de opções que gerou o conflito
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Forçamos a biblioteca a usar rigorosamente a sua URL com .co em todas as requisições
     opcoes = ClientOptions(
