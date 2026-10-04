@@ -156,7 +156,7 @@ with col_log:
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
 
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1)
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO COM DIAGNÓSTICO DE ERRO
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
@@ -164,13 +164,14 @@ with aba1:
     acoes = []
     try:
         supabase = get_supabase_client()
+        # Faz a busca na tabela Acoes
         resposta = supabase.table("Acoes").select("*").order("prazo", ascending=True).execute()
         acoes = resposta.data
     except Exception as e:
-        st.error(f"Erro de conexão com a tabela Acoes: {e}")
+        # Captura e exibe o erro exato na tela em vermelho para sabermos o que o Supabase rejeitou
+        st.error(f"❌ Erro de Conexão ou Estrutura na tabela 'Acoes': {str(e)}")
 
     st.subheader("📊 Distribuição de Status (Monitoramento)")
-    status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
 
     if acoes:
         for a in acoes:
