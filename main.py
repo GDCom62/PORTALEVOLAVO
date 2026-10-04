@@ -154,28 +154,21 @@ with col_log:
         st.rerun()
 
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
-
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - CORRIGIDO E ATUALIZADO
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO REST API INTEGRADA
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
     
-    acoes = []
-    # Inicializa a contagem preventivamente para evitar NameError na pizza
+    # Inicializa a contagem preventivamente para evitar panes visuais
     status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
     
-    try:
-        supabase = get_supabase_client()
-        # CORREÇÃO CRUCIAL: Atualizado o formato de ordenação para o padrão novo da biblioteca (desc=False)
-        resposta = supabase.table("Acoes").select("*").order("prazo", desc=False).execute()
-        acoes = resposta.data
-    except Exception as e:
-        st.error(f"❌ Erro ao ler dados da tabela 'Acoes': {str(e)}")
+    # Busca os dados via REST API direta (Usando a rota segura .co da sua cooperativa)
+    acoes = buscar_dados("Acoes")
 
     st.subheader("📊 Distribuição de Status (Monitoramento)")
 
-    # Preenche a contagem se houver ações retornadas do banco
+    # Preenche a contagem se houver ações retornadas do banco central
     if acoes:
         for a in acoes:
             status_atual = str(a.get('status', 'Não Iniciado')).strip().lower()
@@ -215,12 +208,11 @@ with aba1:
                 st.success(f"Item {id_selecionado} carregado!")
         with col_btn_ex:
             if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
-                try:
-                    supabase.table("Acoes").delete().eq("id_acao", id_selecionado).execute()
+                if excluir_dados("Acoes", "id_acao", id_selecionado):
                     st.success("Ação excluída com sucesso!")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao excluir: {e}")
+                else:
+                    st.error("Erro ao excluir a ação da base de dados.")
 
 # ==============================================================================
 # MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
