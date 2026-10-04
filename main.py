@@ -114,30 +114,32 @@ if not st.session_state['logado']:
     with col_b2:
         st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
         
-        # Armazena os valores digitados diretamente nestas variáveis
-        email_digitado = st.text_input("E-mail cadastrado", key="chave_limpa_email_portal")
-        senha_digitada = st.text_input("Senha", type="password", key="chave_limpa_senha_portal")
-        
-        if st.button("Entrar", use_container_width=True, key="btn_entrar_portal_limpo"):
-            # Verifica se o usuário não deixou os campos em branco no navegador
+        # Envelopamos os campos em um form para o Streamlit segurar os textos digitados
+        with st.form("formulario_login_seguro"):
+            email_digitado = st.text_input("E-mail cadastrado", key="chave_form_email")
+            senha_digitada = st.text_input("Senha", type="password", key="chave_form_senha")
+            
+            # O botão dentro de um form precisa ser obrigatoriamente um form_submit_button
+            botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
+            
+        if botao_entrar:
             if email_digitado and senha_digitada:
                 try:
                     supabase = get_supabase_client()
-                    # Envia as variáveis corretas com os dados digitados
                     auth_res = supabase.auth.sign_in_with_password({
-                        "email": email_digitado, 
-                        "password": senha_digitada
+                        "email": email_digitado.strip(), 
+                        "password": senha_digitada.strip()
                     })
                     if auth_res.user:
                         st.session_state['logado'] = True
-                        st.success("Acesso liberado! Recarregando...")
+                        st.success("🎉 Acesso liberado! Entrando...")
                         st.rerun()
                 except Exception as e:
                     st.error(f"Erro na Autenticação: {str(e)}")
             else:
-                st.warning("⚠️ Por favor, preencha o e-mail e a senha antes de clicar em entrar.")
+                st.warning("⚠️ Por favor, preencha o e-mail e a senha.")
     st.stop()
-
+  
 # --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
 col_tit, col_log = st.columns(2)
 with col_tit:
