@@ -31,10 +31,12 @@ def get_supabase_client() -> Client:
 @st.cache_resource
 def get_postgres_connection():
     try:
-        # Colocamos o link direto da nuvem aqui para não depender de arquivos externos:
-        link_conexao = "postgresql://postgres.otlzkpjlzorxdhagqksf:dgcom91735062@://supabase.com"
+        # Link direto, explícito e forçado para a nuvem da AWS do Supabase
+        # ATENÇÃO: Troque a palavra MINHA_SENHA_NOVA pela senha sem símbolos que você resetou no painel
+        link_final = "postgresql://postgres.otlzkpjlzorxdhagqksf:dgcom91735062@://supabase.com"
         
-        return psycopg2.connect(link_conexao)
+        # Conecta sem buscar nenhuma variável externa do Streamlit
+        return psycopg2.connect(link_final)
     except Exception as e:
         st.error(f"Erro ao conectar ao banco PostgreSQL do Supabase: {e}")
         return None
