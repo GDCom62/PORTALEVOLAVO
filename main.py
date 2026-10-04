@@ -156,23 +156,26 @@ with col_log:
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
 
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO COM DIAGNÓSTICO DE ERRO
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - CORRIGIDO E ATUALIZADO
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
     
     acoes = []
+    # Inicializa a contagem preventivamente para evitar NameError na pizza
+    status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
+    
     try:
         supabase = get_supabase_client()
-        # Faz a busca na tabela Acoes
-        resposta = supabase.table("Acoes").select("*").order("prazo", ascending=True).execute()
+        # CORREÇÃO CRUCIAL: Atualizado o formato de ordenação para o padrão novo da biblioteca (desc=False)
+        resposta = supabase.table("Acoes").select("*").order("prazo", desc=False).execute()
         acoes = resposta.data
     except Exception as e:
-        # Captura e exibe o erro exato na tela em vermelho para sabermos o que o Supabase rejeitou
-        st.error(f"❌ Erro de Conexão ou Estrutura na tabela 'Acoes': {str(e)}")
+        st.error(f"❌ Erro ao ler dados da tabela 'Acoes': {str(e)}")
 
     st.subheader("📊 Distribuição de Status (Monitoramento)")
 
+    # Preenche a contagem se houver ações retornadas do banco
     if acoes:
         for a in acoes:
             status_atual = str(a.get('status', 'Não Iniciado')).strip().lower()
@@ -191,6 +194,8 @@ with aba1:
         fig_pizza.update_layout(width=450, height=350, margin=dict(l=20, r=20, t=20, b=20),
                                 legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
         st.plotly_chart(fig_pizza, use_container_width=False)
+    else:
+        st.info("💡 Adicione ou altere o status de uma ação para visualizar o gráfico.")
 
     st.write("---")
     st.subheader("📋 Ações Registradas")
@@ -216,6 +221,7 @@ with aba1:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")
+
 # ==============================================================================
 # MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
 # ==============================================================================
