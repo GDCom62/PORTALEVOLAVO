@@ -207,4 +207,95 @@ with aba1:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")
+# ==============================================================================
+# MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
+# ==============================================================================
+with aba2:
+    st.header("🧼 Controle Operacional da Lavanderia")
+    
+    col_menu, col_data = st.columns(2)
+    with col_menu:
+        opcoes_l = ["Lavagem", "Lavados", "Secagem", "Pesagem", "Dobragem", "📊 Resumos e Análises", "🛠️ Histórico"]
+        menu_l = st.selectbox("Selecione a Estação de Trabalho:", options=opcoes_l, key="nav_lavanderia")
+    with col_data:
+        dt_global = st.date_input("Data do Lançamento:", datetime.date.today(), key="dt_lavanderia")
+        dt_str = dt_global.strftime('%Y-%m-%d')
+        
+    st.write("---")
+
+    if menu_l == "Lavagem":
+        st.subheader("Lançamento - Setor de Lavagem")
+        c = st.text_input("Cliente", key="lav_c")
+        m = st.text_input("Máquina", key="lav_m")
+        p = st.text_input("Peso (ex: 45kg)", key="lav_p")
+        i = st.text_input("Horário Início", key="lav_i")
+        t = st.text_input("Horário Término", key="lav_t")
+        e = st.text_input("Executante", key="lav_e")
+        if st.button("Gravar Lavagem"):
+            payload = {"cliente": c, "data": dt_str, "maquina": m, "peso": p, "horario_inicio": i, "horario_termino": t, "executante": e}
+            if inserir_dados("lavagem", payload):
+                st.success("✅ Gravado com sucesso na nuvem!")
+            else:
+                st.error("Erro ao gravar dados no Supabase.")
+
+    elif menu_l == "Lavados":
+        st.subheader("Lançamento - Setor de Lavados")
+        c = st.text_input("Cliente", key="lvd_c")
+        m = st.text_input("Máquina", key="lvd_m")
+        p = st.text_input("Peso", key="lvd_p")
+        i = st.text_input("Horário Início", key="lav_i_2")
+        t = st.text_input("Horário Término", key="lav_t_2")
+        e = st.text_input("Executante", key="lvd_e")
+        if st.button("Gravar Lavados"):
+            payload = {"cliente": c, "data": dt_str, "maquina": m, "peso": p, "horario_inicio": i, "horario_termino": t, "executante": e}
+            if inserir_dados("lavados", payload):
+                st.success("✅ Gravado com sucesso na nuvem!")
+            else:
+                st.error("Erro ao gravar dados no Supabase.")
+
+    elif menu_l == "Secagem":
+        st.subheader("Lançamento - Setor de Secagem")
+        m = st.text_input("Máquina", key="sec_m")
+        c = st.text_input("Cliente", key="sec_c")
+        ent = st.text_input("Horário Entrada", key="sec_ent")
+        sai = st.text_input("Horário Saída", key="sec_sai")
+        e = st.text_input("Executante", key="sec_e")
+        if st.button("Gravar Secagem"):
+            payload = {"maquina": m, "cliente": c, "data": dt_str, "horario_entrada": ent, "horario_saida": sai, "executante": e}
+            if inserir_dados("secagem", payload):
+                st.success("✅ Gravado com sucesso na nuvem!")
+            else:
+                st.error("Erro ao gravar dados no Supabase.")
+
+    elif menu_l == "Pesagem":
+        st.subheader("Lançamento - Setor de Pesagem")
+        c = st.text_input("Cliente", key="pes_c")
+        p = st.text_input("Pesagem", key="pes_p")
+        e = st.text_input("Executante", key="pes_e")
+        tipo = st.radio("Tipo de Operação", ["Normal", "Relave"], key="pes_tipo")
+        if st.button("Gravar Pesagem"):
+            payload = {"cliente": c, "data": dt_str, "pesagem": p, "executante": e, "tipo_operacao": tipo}
+            if inserir_dados("pesagem", payload):
+                st.success("✅ Gravado com sucesso na nuvem!")
+            else:
+                st.error("Erro ao gravar dados no Supabase.")
+
+    elif menu_l == "Dobragem":
+        st.subheader("Lançamento - Setor de Dobragem")
+        c = st.text_input("Cliente", key="dob_c")
+        e = st.text_input("Executante", key="dob_e")
+        st.markdown("### Contagem de Itens Dobrados")
+        qtds = {}
+        for it in ITENS_DOBRAGEM:
+            qtds[it] = st.number_input(f"Qtd {it}:", min_value=0, step=1, key=f"d_{it}")
+        if st.button("Gravar Dobragem"):
+            cols_it = [it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM]
+            payload = {"cliente": c, "data": dt_str, "executante": e}
+            for it in ITENS_DOBRAGEM:
+                campo_banco = it.lower().replace("ç", "c").replace("ã", "a")
+                payload[campo_banco] = int(qtds[it])
+            if inserir_dados("dobragem", payload):
+                st.success("✅ Gravado com sucesso na nuvem!")
+            else:
+                st.error("Erro ao gravar dados no Supabase.")
 
