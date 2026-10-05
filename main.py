@@ -8,7 +8,7 @@ from supabase import create_client, Client
 # ==============================================================================
 # 1. CONFIGURAÇÃO GLOBAL DA PÁGINA
 # ==============================================================================
-st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="💧")
 
 # ==============================================================================
 # 2. CREDENCIAIS E CONEXÕES CENTRAIS (VERSÃO ATUALIZADA E DIRETAL)
