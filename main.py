@@ -155,7 +155,7 @@ with col_log:
 
 aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO COMPLETA COM CADASTRO E BUSCA BLINDADA
+# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO DE CONEXÃO OFICIAL
 # ==============================================================================
 with aba1:
     st.header("Plano de Ação Lavo e Levo")
@@ -163,10 +163,20 @@ with aba1:
     # Inicializa a contagem preventivamente para o gráfico de pizza
     status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
     
-    # 🔍 BUSCA BLINDADA: Tenta buscar com "Acoes" (Maiúsculo), se vier vazio tenta "acoes" (Minúsculo)
-    acoes = buscar_dados("Acoes")
-    if not acoes:
-        acoes = buscar_dados("acoes")
+    # 🔍 BUSCA DIRETA VIA CLIENT: Resgata as informações reais e antigas do banco
+    acoes = []
+    try:
+        supabase_client = get_supabase_client()
+        # Busca os dados ordenados por prazo utilizando a nova sintaxe da biblioteca
+        resposta = supabase_client.table("Acoes").select("*").order("prazo", desc=False).execute()
+        acoes = resposta.data
+    except Exception as e:
+        try:
+            # Fallback caso a tabela no banco use letras minúsculas 'acoes'
+            resposta = supabase_client.table("acoes").select("*").order("prazo", desc=False).execute()
+            acoes = resposta.data
+        except Exception:
+            st.info("💡 Aguardando novos registros na tabela de Plano de Ação.")
 
     st.subheader("📊 Distribuição de Status (Monitoramento)")
 
@@ -192,7 +202,7 @@ with aba1:
     else:
         st.info("💡 Nenhuma ação encontrada para gerar o gráfico. Cadastre uma nova ação abaixo!")
 
-    # 🆕 FORMULÁRIO DE CADASTRO (O que faltava para registrar novos itens)
+    # 🆕 FORMULÁRIO DE CADASTRO CONECTADO VIA CLIENT
     st.write("---")
     st.subheader("➕ Registrar Nova Ação (5W2H)")
     
@@ -207,13 +217,12 @@ with aba1:
             prazo = st.date_input("Até quando? (Prazo):", datetime.date.today())
             como = st.text_area("Como será feito? (Método/Processo):")
             quando_det = st.text_input("Quando detalhado? (Frequência/Turno):")
-            status_nova = o = st.selectbox("Qual o status atual?", ["Não Iniciado", "Em Andamento", "Concluído"])
+            status_nova = st.selectbox("Qual o status atual?", ["Não Iniciado", "Em Andamento", "Concluído"])
             
         botao_gravar_acao = st.form_submit_button("💾 Salvar Ação no Supabase")
         
         if botao_gravar_acao:
             if desc and resp:
-                # Monta o pacote de dados exatamente no padrão das colunas do seu banco
                 payload_nova_acao = {
                     "descricao_acao": desc,
                     "porque": porque,
@@ -225,17 +234,17 @@ with aba1:
                     "status": status_nova
                 }
                 
-                # Tenta inserir na tabela Acoes
-                sucesso = inserir_dados("Acoes", payload_nova_acao)
-                if not sucesso:
-                    # Se falhar por nome de tabela, tenta em minúsculo
-                    sucesso = inserir_dados("acoes", payload_nova_acao)
-                    
-                if sucesso:
+                try:
+                    supabase_client.table("Acoes").insert(payload_nova_acao).execute()
                     st.success("🎉 Nova ação registrada com sucesso no Supabase!")
                     st.rerun()
-                else:
-                    st.error("Erro ao tentar salvar a ação. Verifique se a tabela possui RLS desativada no Supabase.")
+                except Exception:
+                    try:
+                        supabase_client.table("acoes").insert(payload_nova_acao).execute()
+                        st.success("🎉 Nova ação registrada com sucesso no Supabase!")
+                        st.rerun()
+                    except Exception as e_ins:
+                        st.error(f"Erro ao salvar a ação: {str(e_ins)}")
             else:
                 st.error("⚠️ Os campos 'Descrição' e 'Responsável' são obrigatórios!")
 
@@ -250,23 +259,26 @@ with aba1:
         
         col_sel, col_btn_ed, col_btn_ex = st.columns(3)
         with col_sel:
-            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", [a.get('id_acao', a.get('id')) for a in acoes], key="sel_id_aba1")
+            # Tenta capturar a chave primária correta retornada pelo banco
+            lista_ids = [a.get('id_acao') if a.get('id_acao') is not None else a.get('id') for a in acoes]
+            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", lista_ids, key="sel_id_aba1")
         with col_btn_ed:
             if st.button("✏️ Editar Selecionado", key="ed_bt_a1"):
                 st.session_state['edit_item'] = next((item for item in acoes if item.get("id_acao") == id_selecionado or item.get("id") == id_selecionado), None)
                 st.success(f"Item {id_selecionado} carregado!")
         with col_btn_ex:
             if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
-                # Tenta deletar usando a chave id_acao ou id padrão
-                sucesso_ex = excluir_dados("Acoes", "id_acao", id_selecionado) or excluir_dados("Acoes", "id", id_selecionado)
-                if not sucesso_ex:
-                    sucesso_ex = excluir_dados("acoes", "id_acao", id_selecionado) or excluir_dados("acoes", "id", id_selecionado)
-                    
-                if sucesso_ex:
+                try:
+                    supabase_client.table("Acoes").delete().eq("id_acao", id_selecionado).execute()
                     st.success("Ação excluída com sucesso!")
                     st.rerun()
-                else:
-                    st.error("Erro ao excluir a ação da base de dados.")
+                except Exception:
+                    try:
+                        supabase_client.table("acoes").delete().eq("id", id_selecionado).execute()
+                        st.success("Ação excluída com sucesso!")
+                        st.rerun()
+                    except Exception as e_del:
+                        st.error(f"Erro ao excluir a ação: {str(e_del)}")
 
 # ==============================================================================
 # MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
