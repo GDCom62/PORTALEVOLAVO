@@ -104,11 +104,13 @@ if "editando_os_id" not in st.session_state:
     st.session_state.editando_os_id = None
 
 # --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (SISTEMA DE SEGURANÇA LOCAL) ---
+# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ ---
 if not st.session_state['logado']:
     col_l1, col_l2, col_l3 = st.columns(3)
     with col_l2:
         try:
-            st.image("logo.png", use_container_width=True)
+            # Alterado de use_container_width para width=60 fixo
+            st.image("logo.png", width=60)
         except Exception:
             st.caption("📷 *[Insira o arquivo logo.png no seu diretório]*")
     
