@@ -103,20 +103,22 @@ if "editando_maquina_id" not in st.session_state:
 if "editando_os_id" not in st.session_state:
     st.session_state.editando_os_id = None
 
-# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (SISTEMA DE SEGURANÇA LOCAL) ---
-# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ ---
+# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (VERSÃO CENTRALIZAÇÃO NATIVA) ---
 if not st.session_state['logado']:
-    col_l1, col_l2, col_l3 = st.columns(3)
-    with col_l2:
+    # Criamos 5 colunas: as laterais são largas (30%) e a do meio é estreita (10%) para travar o logo de 60x60 no centro
+    col_v1, col_v2, col_logo, col_v4, col_v5 = st.columns([30, 30, 10, 30, 30])
+    
+    with col_logo:
         try:
-            # Alterado de use_container_width para width=60 fixo
+            # Renderização nativa travada em 60px de largura
             st.image("logo.png", width=60)
         except Exception:
-            st.caption("📷 *[Insira o arquivo logo.png no seu diretório]*")
-    
+            st.caption("📷 logo")
+            
+    # O restante do formulário de login continua na coluna de baixo normalmente centralizado
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
-        st.markdown("<h2 style='text-align: center;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin-top: 10px;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
         
         with st.form("formulario_login_seguro"):
             email_digitado = st.text_input("E-mail cadastrado", key="chave_form_email")
@@ -124,8 +126,6 @@ if not st.session_state['logado']:
             botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
             
         if botao_entrar:
-            # 🔐 DEfine as credenciais de acesso direto no código
-            # Mude os valores abaixo para o e-mail e a senha que você preferir usar:
             email_correto = "admin@lavolevo.com"
             senha_correta = "LavoLevo2026"
             
