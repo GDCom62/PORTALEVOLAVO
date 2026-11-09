@@ -1,591 +1,841 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import datetime
+from datetime import datetime as dt_internal
+import io
+import os
 import requests
+import smtplib
+from email.message import EmailMessage
+import base64
+
+# Bancos de Dados e Gráficos
+from sqlalchemy import create_engine, text
+from fpdf import FPDF
+import plotly.express as px
+import psycopg2
 from supabase import create_client, Client
 
 # ==============================================================================
-# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA
+# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS
 # ==============================================================================
-st.set_page_config(page_title="Painel Integrado Lavo e Levo", layout="wide", page_icon="💧")
+st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro", layout="wide", page_icon="🧼")
+
+st.markdown("""
+    <style>
+    .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { border-radius: 12px !important; }
+    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e0e0e0; }
+    [data-testid="stForm"], div[data-testid="stExpander"], .stMetric { 
+        border-radius: 15px !important; border: 1px solid #eef2f6 !important; 
+        background-color: #ffffff; padding: 20px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    }
+    h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
+    .pt-box { border: 3px double #FF0000; padding: 20px; background-color: #FFF5F5; color: #000000; font-family: monospace; border-radius: 5px; }
+    .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Lote Fixo de Itens para Contagem de Dobragem
+ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
 
 # ==============================================================================
-# 2. CREDENCIAIS E CONEXÕES CENTRAIS (VERSÃO ATUALIZADA E DIRETAL)
+# 2. INICIALIZAÇÃO DE CREDENCIAIS E CONEXÕES (SQLite, Supabase, PostgreSQL)
 # ==============================================================================
-# Endereço correto da sua empresa (terminando em .co)
+
+# --- CONEXÃO 1: SQLite Local (Módulo Hospitalar Pro) ---
+engine_sqlite = create_engine("sqlite:///gestao_lavanderia.db", pool_size=20, max_overflow=30)
+
+def executar_sqlite(sql, params={}):
+    with engine_sqlite.begin() as conn:
+        conn.execute(text(sql), params)
+
+def consultar_sqlite(sql, params={}):
+    with engine_sqlite.connect() as conn:
+        return pd.read_sql_query(text(sql), conn, params=params)
+
+def init_sqlite_db():
+    executar_sqlite('CREATE TABLE IF NOT EXISTS operadores (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, senha TEXT, funcao TEXT)')
+    executar_sqlite('''CREATE TABLE IF NOT EXISTS lotes (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT, hospital TEXT, peso_entrada REAL, maquina TEXT, 
+                      processo TEXT, status TEXT, inicio_lavagem TEXT, fim_lavagem TEXT, inicio_secagem TEXT, 
+                      fim_secagem TEXT, inicio_acabamento TEXT, fim_acabamento TEXT, saida_motorista TEXT, 
+                      motorista_nome TEXT, peso_saida REAL, gaiola_num TEXT, operador_lavagem TEXT, 
+                      operador_secagem TEXT, operador_acabamento TEXT)''')
+    executar_sqlite('CREATE TABLE IF NOT EXISTS contagem_itens (lote_id INTEGER, item TEXT, quantidade INTEGER)')
+    executar_sqlite('CREATE TABLE IF NOT EXISTS alertas_panico (id INTEGER PRIMARY KEY AUTOINCREMENT, operador TEXT, etapa TEXT, data TEXT, resolvido INTEGER)')
+    if consultar_sqlite("SELECT * FROM operadores WHERE nome='admin'").empty:
+        executar_sqlite("INSERT INTO operadores (nome, senha, funcao) VALUES ('admin', '1234', 'Administrador')")
+
+init_sqlite_db()
+
+# --- CONEXÃO 2: Supabase (Módulo Lavo e Levo 5W2H e Manutenção) ---
 SUPABASE_URL = "https://supabase.co"
 SUPABASE_KEY = "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw"
 
 @st.cache_resource
 def get_supabase_client() -> Client:
-    # Cria o cliente de forma direta, eliminando o bloco de opções que gerou o conflito
     return create_client(SUPABASE_URL, SUPABASE_KEY)
-    
-    # Forçamos a biblioteca a usar rigorosamente a sua URL com .co em todas as requisições
-    opcoes = ClientOptions(
-        auth=dict(
-            url=f"{SUPABASE_URL}/auth/v1",
-            storage_key="lavo-levo-auth-key"
-        )
-    )
-    return create_client(SUPABASE_URL, SUPABASE_KEY, options=opcoes)
 
-# ==============================================================================
-# 3. FUNÇÕES DE BANCO DE DADOS DIRETO VIA REST API (Para os Módulos 1, 2 e 3)
-# ==============================================================================
-def buscar_dados(tabela: str):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return []
+def buscar_supabase(tabela: str):
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     url = f"{SUPABASE_URL}/rest/v1/{tabela}?select=*"
     try:
         response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
+        if response.status_code == 200: return response.json()
+    except Exception: pass
     return []
 
-def inserir_dados(tabela: str, payload: dict):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return False
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
+def inserir_supabase(tabela: str, payload: dict):
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
     url = f"{SUPABASE_URL}/rest/v1/{tabela}"
     try:
         response = requests.post(url, headers=headers, json=payload)
         return 200 <= response.status_code <= 299
-    except Exception:
-        return False
+    except Exception: return False
 
-def atualizar_dados(tabela: str, payload: dict, coluna_id: str, valor_id):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return False
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
+def atualizar_supabase(tabela: str, payload: dict, coluna_id: str, valor_id):
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
     url = f"{SUPABASE_URL}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
     try:
         response = requests.patch(url, headers=headers, json=payload)
         return 200 <= response.status_code <= 299
-    except Exception:
-        return False
+    except Exception: return False
 
-def excluir_dados(tabela: str, coluna_id: str, valor_id):
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return False
+def excluir_supabase(tabela: str, coluna_id: str, valor_id):
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     url = f"{SUPABASE_URL}/rest/v1/{tabela}?{coluna_id}=eq.{valor_id}"
     try:
         response = requests.delete(url, headers=headers)
         return 200 <= response.status_code <= 299
-    except Exception:
-        return False
+    except Exception: return False
 
-# Itens fixos globais do Módulo de Dobragem
-ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
+# --- CONEXÃO 3: PostgreSQL (Módulo Controle Operacional Clássico) ---
+db_postgres = None
+if "banco_dados" in st.secrets and "uri" in st.secrets["banco_dados"]:
+    try:
+        db_postgres = psycopg2.connect(st.secrets["banco_dados"]["uri"])
+    except Exception as e:
+        st.error(f"Erro ao conectar ao PostgreSQL: {e}")
 
 # ==============================================================================
-# 4. CONTROLE DE SESSÃO GLOBAL E LOGIN UNIFICADO
+# 3. CONTROLE DE ESTADO DA SESSÃO GLOBAL
 # ==============================================================================
-if 'logado' not in st.session_state:
-    st.session_state['logado'] = False
-if 'edit_item' not in st.session_state:
-    st.session_state['edit_item'] = None
-if "editando_maquina_id" not in st.session_state:
-    st.session_state.editando_maquina_id = None
-if "editando_os_id" not in st.session_state:
-    st.session_state.editando_os_id = None
+estados_iniciais = {
+    'logado': False, 'usuario_nome': "", 'usuario_funcao': "", 'tambor': [],
+    'editando_maquina_id': None, 'editando_os_id': None, 'edit_item_5w2h': None
+}
+for key, val in estados_iniciais.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
 
-# --- TELA DE LOGIN OBRIGATÓRIA NA RAIZ (VERSÃO CENTRALIZAÇÃO NATIVA) ---
+# ==============================================================================
+# 4. TELA DE AUTENTICAÇÃO UNIFICADA (Apenas 1 Login para o App Todo)
+# ==============================================================================
 if not st.session_state['logado']:
-    # Criamos 5 colunas: as laterais são largas (30%) e a do meio é estreita (10%) para travar o logo de 60x60 no centro
     col_v1, col_v2, col_logo, col_v4, col_v5 = st.columns([30, 30, 10, 30, 30])
-    
     with col_logo:
-        try:
-            # Renderização nativa travada em 60px de largura
-            st.image("logo.png", width=60)
-        except Exception:
-            st.caption("📷 logo")
+        try: st.image("logo.png", width=60)
+        except Exception: st.caption("🧼 LOGO")
             
-    # O restante do formulário de login continua na coluna de baixo normalmente centralizado
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
         st.markdown("<h2 style='text-align: center; margin-top: 10px;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
-        
-        with st.form("formulario_login_seguro"):
-            email_digitado = st.text_input("E-mail cadastrado", key="chave_form_email")
-            senha_digitada = st.text_input("Senha", type="password", key="chave_form_senha")
+        with st.form("formulario_login_unificado"):
+            email_input = st.text_input("Usuário ou E-mail")
+            senha_input = st.text_input("Senha", type="password")
             botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
             
         if botao_entrar:
-            email_correto = "admin@lavolevo.com"
-            senha_correta = "LavoLevo2026"
-            
-            if email_digitado.strip() == email_correto and senha_digitada.strip() == senha_correta:
-                st.session_state['logado'] = True
-                st.success("🎉 Acesso liberado! Entrando...")
+            if email_input.strip() == "admin@lavolevo.com" and senha_input.strip() == "LavoLevo2026":
+                st.session_state.update({'logado': True, 'usuario_nome': "Administrador Geral", 'usuario_funcao': "Diretoria"})
+                st.success("🎉 Acesso liberado!")
                 st.rerun()
             else:
-                st.error("❌ E-mail ou senha incorretos. Tente novamente.")
+                res_sqlite = consultar_sqlite("SELECT nome, funcao FROM operadores WHERE nome=:u AND senha=:s", {"u": email_input, "s": senha_input})
+                if not res_sqlite.empty:
+                    st.session_state.update({'logado': True, 'usuario_nome': res_sqlite.iloc[0]['nome'], 'usuario_funcao': res_sqlite.iloc[0]['funcao']})
+                    st.success(f"Bem-vindo, {st.session_state['usuario_nome']}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Credenciais incorretas. Tente novamente.")
     st.stop()
-  
-# --- HEADER DO SISTEMA (SÓ APARECE APÓS LOGIN) ---
-col_tit, col_log = st.columns(2)
-with col_tit:
-    st.title("🚀 Central de Operações - Lavo e Levo")
-with col_log:
-    st.write("<br>", unsafe_allow_html=True)
-    if st.button("Sair (Logout)", use_container_width=True, key="btn_logout_central_limpo"):
-        try:
-            supabase = get_supabase_client()
-            supabase.auth.sign_out()
-        except Exception:
-            pass
-        st.session_state['logado'] = False
-        st.session_state['edit_item'] = None
-        st.session_state.editando_maquina_id = None
-        st.session_state.editando_os_id = None
-        st.rerun()
 
-aba1, aba2, aba3 = st.tabs(["📋 1. Plano de Ação 5W2H", "🧼 2. Controle de Lavanderia", "⚙️ 3. Manutenção & PT"])
 # ==============================================================================
-# MÓDULO 1: PLANO DE AÇÃO 5W2H (ABA 1) - VERSÃO DE CONEXÃO OFICIAL
+# 5. ESTRUTURAÇÃO DE ABAS MESTRE (OS 4 APPS INTEGRADOS)
 # ==============================================================================
-with aba1:
-    st.header("Plano de Ação Lavo e Levo")
+try: st.sidebar.image("logo.png", width=100)
+except Exception: pass
+st.sidebar.title(f"👤 {st.session_state['usuario_nome']}")
+st.sidebar.caption(f"Função: {st.session_state['usuario_funcao']}")
+
+if st.sidebar.button("Sair (Logout)", use_container_width=True):
+    for k in estados_iniciais.keys(): st.session_state[k] = estados_iniciais[k]
+    st.rerun()
+
+aba_hospitalar, aba_5w2h, aba_operacional, aba_manutencao = st.tabs([
+    "🏥 Lavanderia Hospitalar Pro", 
+    "📊 Plano de Ação 5W2H", 
+    "🧼 Controle Operacional", 
+    "⚙️ Gestão de Manutenção & PT"
+])
+# ==============================================================================
+# CÓDIGO - APP 1: LAVANDERIA HOSPITALAR PRO (SQLITE LOCAL)
+# ==============================================================================
+with aba_hospitalar:
+    st.title("🏥 Gestão Lavanderia Hospitalar Pro")
+    menu_h = st.radio(
+        "Módulos de Fluxo:", 
+        ["Painel Geral", "1. Entrada/Lavagem", "2. Rampa", "3. Secagem", "4. Acabamento", "5. Expedição e Etiquetas", "📊 Relatórios Hospitalares", "⚙️ Gestão Interna"], 
+        horizontal=True,
+        key="menu_fluxo_hospitalar"
+    )
     
-    # Inicializa a contagem preventivamente para o gráfico de pizza
+    # Função local para gerar o binário do PDF da etiqueta de gaiola
+    def gerar_pdf_etiqueta(lote, itens):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 18)
+        pdf.cell(190, 15, "ETIQUETA DE GAIOLA", 1, 1, "C")
+        pdf.set_font("Arial", "", 12)
+        pdf.ln(10)
+        pdf.cell(95, 10, f"Hospital: {lote['hospital']}", 0, 0)
+        pdf.cell(95, 10, f"Gaiola N°: {lote['gaiola_num']}", 0, 1)
+        pdf.cell(95, 10, f"Peso Final: {lote['peso_saida']} kg", 0, 0)
+        pdf.cell(95, 10, f"Data: {dt_internal.now().strftime('%d/%m/%Y %H:%M')}", 0, 1)
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(190, 10, "CONTEÚDO REGISTRADO:", 0, 1)
+        for _, item in itens.iterrows():
+            pdf.cell(190, 8, f"- {item['item']}: {item['quantidade']} un", 0, 1)
+        return bytes(pdf.output())
+
+    # --- TELA: PAINEL GERAL ---
+    if menu_h == "Painel Geral":
+        panicos = consultar_sqlite("SELECT * FROM alertas_panico WHERE resolvido=0")
+        if not panicos.empty:
+            for _, p in panicos.iterrows():
+                st.error(f"🆘 ALERTA PÂNICO OPERACIONAL: {p['operador']} em etapa {p['etapa']} ({p['data']})")
+                if st.button(f"Marcar como Resolvido #{p['id']}", key=f"pan_h_{p['id']}"):
+                    executar_sqlite("UPDATE alertas_panico SET resolvido=1 WHERE id=:id", {"id": p['id']})
+                    st.rerun()
+        
+        df_l = consultar_sqlite("SELECT id, hospital, status, maquina, inicio_lavagem FROM lotes WHERE status != 'Finalizado'")
+        if not df_l.empty:
+            st.markdown("### 📈 Monitoramento Ativo de Lotes Hospitalares")
+            st.dataframe(df_l, use_container_width=True)
+            sel_raw = st.selectbox("Selecione um Lote para Intervenção:", ["Selecione..."] + (df_l['id'].astype(str) + " - " + df_l['hospital']).tolist(), key="sel_lote_gerenc_h")
+            if sel_raw != "Selecione...":
+                id_r = int(sel_raw.split(" - ")[0])
+                col_c1, col_c2 = st.columns(2)
+                if col_c1.button("🔄 Reiniciar Ciclos do Lote", key=f"btn_reinit_{id_r}", use_container_width=True):
+                    executar_sqlite("UPDATE lotes SET status='Lavando', fim_lavagem=NULL, inicio_secagem=NULL, fim_secagem=NULL, inicio_acabamento=NULL, fim_acabamento=NULL WHERE id=:id", {"id": id_r})
+                    st.rerun()
+                if col_c2.button("❌ Excluir Lote Permanentemente", key=f"btn_del_{id_r}", use_container_width=True):
+                    executar_sqlite("DELETE FROM lotes WHERE id=:id", {"id": id_r})
+                    st.rerun()
+        else:
+            st.info("Sem lotes hospitalares em processamento ativo no momento.")
+
+    # --- TELA: 1. ENTRADA/LAVAGEM ---
+    elif menu_h == "1. Entrada/Lavagem":
+        st.header("📥 Entrada Lavadora Hospitalar")
+        maq = st.selectbox("Selecione a Máquina Destino:", ["M1 (120kg)", "M2 (120kg)", "M3 (100kg)", "M4 (60kg)", "M5 (50kg)"], key="maq_lav_h")
+        with st.form("add_tambor_hospitalar", clear_on_submit=True):
+            h_n = st.selectbox("Hospital de Origem:", ["Hospital A", "Hospital B", "Hospital C"], key="hosp_orig_h")
+            h_p = st.number_input("Peso Bruto de Entrada (kg):", min_value=1.0, value=20.0, step=0.5, key="peso_ent_h")
+            h_t = st.radio("Classificação/Processo do Lote:", ["Leve", "Pesada", "Relave"], horizontal=True, key="classe_lote_h")
+            if st.form_submit_button("➕ Adicionar Lote ao Tambor"):
+                st.session_state.tambor.append({"h": h_n, "p": h_p, "t": h_t})
+        if st.session_state.tambor:
+            st.markdown("#### Itens Prontos para Carga na Máquina")
+            st.table(pd.DataFrame(st.session_state.tambor))
+            if st.button("🚀 EFETIVAR CARGA E INICIAR LAVAGEM", use_container_width=True, key="btn_start_lav_h"):
+                dt_str = dt_internal.now().strftime("%Y-%m-%d %H:%M")
+                for item in st.session_state.tambor:
+                    executar_sqlite(
+                        "INSERT INTO lotes (hospital, peso_entrada, maquina, processo, status, inicio_lavagem, operador_lavagem) VALUES (:h, :p, :m, :pr, 'Lavando', :dt, :op)",
+                        {"h": item['h'], "p": item['p'], "m": maq, "pr": item['t'], "dt": dt_str, "op": st.session_state['usuario_nome']}
+                    )
+                st.session_state.tambor = []
+                st.success("Lotes carregados no banco e cronômetro iniciado!")
+                st.rerun()
+
+    # --- TELA: 2. RAMPA ---
+    elif menu_h == "2. Rampa":
+        st.header("⏳ Rampa (Saída de Lavagem)")
+        df = consultar_sqlite("SELECT id, hospital FROM lotes WHERE status='Lavando'")
+        if not df.empty:
+            sel = st.selectbox("Selecione o Lote Finalizado na Lavadora:", df['id'].astype(str) + " - " + df['hospital'], key="sel_rampa_h")
+            if st.button("✅ Confirmar Descarga e Enviar para Rampa", use_container_width=True, key="btn_send_rampa_h"):
+                executar_sqlite(
+                    "UPDATE lotes SET status='Na Rampa', fim_lavagem=:dt WHERE id=:id", 
+                    {"dt": dt_internal.now().strftime("%Y-%m-%d %H:%M"), "id": int(sel.split(" - ")[0])}
+                )
+                st.success("Lote enviado para a rampa de espera!")
+                st.rerun()
+        else:
+            st.info("Nenhum lote hospitalar em processo de lavagem no momento.")
+
+    # --- TELA: 3. SECAGEM ---
+    elif menu_h == "3. Secagem":
+        st.header("🔥 Processamento de Secagem")
+        df = consultar_sqlite("SELECT id, hospital, status FROM lotes WHERE status IN ('Na Rampa', 'Secando')")
+        if not df.empty:
+            sel = st.selectbox("Selecione o Lote Alvo:", df['id'].astype(str) + " - " + df['hospital'], key="sel_sec_h")
+            id_l = int(sel.split(" - ")[0])
+            stat = df[df['id'] == id_l].iloc[0]['status']
+            
+            if stat == 'Na Rampa':
+                if st.button("🚀 Iniciar Ciclo de Secagem", use_container_width=True, key=f"btn_start_sec_{id_l}"):
+                    executar_sqlite(
+                        "UPDATE lotes SET status='Secando', inicio_secagem=:dt, operador_secagem=:op WHERE id=:id", 
+                        {"dt": dt_internal.now().strftime("%Y-%m-%d %H:%M"), "op": st.session_state['usuario_nome'], "id": id_l}
+                    )
+                    st.rerun()
+            elif stat == 'Secando':
+                st.info("Lote atualmente dentro do secador.")
+                if st.button("⏪ Estornar e Devolver para Rampa", use_container_width=True, key=f"btn_est_sec_{id_l}"):
+                    executar_sqlite("UPDATE lotes SET status='Na Rampa', inicio_secagem=NULL WHERE id=:id", {"id": id_l})
+                    st.rerun()
+        else:
+            st.info("Não há lotes disponíveis para secagem ou em processo de secagem.")
+
+    # --- TELA: 4. ACABAMENTO ---
+    elif menu_h == "4. Acabamento":
+        st.header("🧺 Triagem, Dobra e Passagem")
+        df = consultar_sqlite("SELECT id, hospital, status FROM lotes WHERE status IN ('Secando', 'Pronto')")
+        if not df.empty:
+            sel = st.selectbox("Selecione o Lote para Contagem:", df['id'].astype(str) + " - " + df['hospital'], key="sel_acab_h")
+            id_l = int(sel.split(" - ")[0])
+            stat = df[df['id'] == id_l].iloc[0]['status']
+            
+            if stat == 'Secando':
+                st.markdown("#### Digite as Quantidades das Peças Triadas:")
+                ed = st.data_editor(
+                    pd.DataFrame([{"Item": item, "Qtd": 0} for item in ITENS_DOBRAGEM]), 
+                    use_container_width=True, 
+                    hide_index=True,
+                    key=f"editor_itens_h_{id_l}"
+                )
+                if st.button("✅ Salvar Contagem e Finalizar Lote", use_container_width=True, key=f"btn_save_acab_{id_l}"):
+                    dt_str = dt_internal.now().strftime("%Y-%m-%d %H:%M")
+                    executar_sqlite(
+                        "UPDATE lotes SET status='Pronto', fim_secagem=:dt, inicio_acabamento=:dt, operador_acabamento=:op WHERE id=:id", 
+                        {"dt": dt_str, "op": st.session_state['usuario_nome'], "id": id_l}
+                    )
+                    for _, row in ed.iterrows():
+                        if row['Qtd'] > 0:
+                            executar_sqlite("INSERT INTO contagem_itens (lote_id, item, quantidade) VALUES (:id, :it, :q)", {"id": id_l, "it": row['Item'], "q": row['Qtd']})
+                    st.success("Contagem salva e lote movido para expedição!")
+                    st.rerun()
+            elif stat == 'Pronto':
+                st.info("A contagem deste lote já foi finalizada.")
+                if st.button("⏪ Estornar Contagem (Zerar Valores)", use_container_width=True, key=f"btn_est_acab_{id_l}"):
+                    executar_sqlite("UPDATE lotes SET status='Secando', fim_secagem=NULL, inicio_acabamento=NULL WHERE id=:id", {"id": id_l})
+                    executar_sqlite("DELETE FROM contagem_itens WHERE lote_id=:id", {"id": id_l})
+                    st.rerun()
+        else:
+            st.info("Nenhum lote necessitando de contagem no momento.")
+
+       # --- TELA: 5. EXPEDIÇÃO E ETIQUETAS ---
+    elif menu_h == "5. Expedição e Etiquetas":
+        st.header("📦 Despacho e Emissão de Etiquetas")
+        df = consultar_sqlite("SELECT id, hospital, status FROM lotes WHERE status IN ('Pronto', 'Disponível')")
+        if not df.empty:
+            sel = st.selectbox("Selecione o Lote para Saída:", df['id'].astype(str) + " - " + df['hospital'], key="sel_exp_h")
+            id_l = int(sel.split(" - ")[0])
+            stat = df[df['id'] == id_l].iloc[0]['status']
+            
+            if stat == 'Pronto':
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    ps = st.number_input("Peso Final de Saída (kg):", min_value=0.1, step=0.1, key=f"peso_sai_h_{id_l}")
+                with col_p2:
+                    gai = st.text_input("Gaiola Metálica de Identificação N°:", key=f"gaiola_num_h_{id_l}")
+                if st.button("✅ Liberar e Selar Lote para Saída", use_container_width=True, key=f"btn_lib_exp_{id_l}"):
+                    executar_sqlite(
+                        "UPDATE lotes SET status='Disponível', fim_acabamento=:dt, peso_saida=:ps, gaiola_num=:g WHERE id=:id", 
+                        {"dt": dt_internal.now().strftime("%Y-%m-%d %H:%M"), "ps": ps, "g": gai, "id": id_l}
+                    )
+                    st.rerun()
+            elif stat == 'Disponível':
+                st.success("Lote despachado e selado operacionalmente.")
+                ld = consultar_sqlite("SELECT * FROM lotes WHERE id=:id", {"id": id_l}).iloc[0]
+                it = consultar_sqlite("SELECT item, quantidade FROM contagem_itens WHERE lote_id=:id", {"id": id_l})
+                st.download_button(
+                    label="📥 Baixar Etiqueta Oficial de Gaiola (PDF)", 
+                    data=gerar_pdf_etiqueta(ld, it), 
+                    file_name=f"etiqueta_hospitalar_lote_{id_l}.pdf", 
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key=f"btn_pdf_exp_{id_l}"
+                )
+        else:
+            st.info("Nenhum lote aguardando pesagem de expedição ou emissão de etiquetas.")
+
+    # --- TELA: 📊 RELATÓRIOS HOSPITALARES ---
+    elif menu_h == "📊 Relatórios Hospitalares":
+        st.header("📊 Painel de Produtividade Hospitalar")
+        df = consultar_sqlite("SELECT * FROM lotes")
+        if not df.empty:
+            c_g1, c_g2 = st.columns(2)
+            with c_g1:
+                st.subheader("🏆 Clientes por Volume Processado (Kg)")
+                st.write(df.groupby('hospital')['peso_entrada'].sum().sort_values(ascending=False))
+            with c_g2:
+                st.subheader("👷 Desempenho de Operadores (Kg)")
+                ops = pd.concat([
+                    df[['operador_lavagem', 'peso_entrada']].rename(columns={'operador_lavagem': 'op'}),
+                    df[['operador_secagem', 'peso_entrada']].rename(columns={'operador_secagem': 'op'}),
+                    df[['operador_acabamento', 'peso_entrada']].rename(columns={'operador_acabamento': 'op'})
+                ])
+                st.write(ops.dropna().groupby('op')['peso_entrada'].sum().sort_values(ascending=False))
+            st.divider()
+            st.markdown("#### Histórico Analítico Completo de Lotes")
+            st.dataframe(df, use_container_width=True)
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine='xlsxwriter') as wr: 
+                df.to_excel(wr, index=False)
+            st.download_button(
+                "📥 Exportar Planilha Consolidada para Excel", 
+                buf.getvalue(), 
+                "relatorio_gestao_hospitalar.xlsx",
+                use_container_width=True,
+                key="btn_export_xlsx_h"
+            )
+        else:
+            st.info("Nenhum registro de lote encontrado na base local SQLite para geração de gráficos.")
+
+    # --- TELA: ⚙️ GESTÃO INTERNA ---
+    elif menu_h == "⚙️ Gestão Interna":
+        st.header("⚙️ Gestão Administrativa Local")
+        with st.expander("Cadastrar Novo Operador no Banco Local"):
+            with st.form("form_novo_op_h", clear_on_submit=True):
+                n = st.text_input("Nome do Operador (Login):")
+                s = st.text_input("Senha de Acesso:", type="password")
+                f = st.selectbox("Função Designada:", ["Operador", "Motorista", "Administrador"])
+                if st.form_submit_button("Salvar Operador"):
+                    if n and s:
+                        try:
+                            executar_sqlite("INSERT INTO operadores (nome, senha, funcao) VALUES (:n, :s, :f)", {"n": n, "s": s, "f": f})
+                            st.success(f"Operador '{n}' registrado com êxito!")
+                        except Exception:
+                            st.error("Erro: Este nome de usuário já existe no sistema.")
+
+# ==============================================================================
+# CÓDIGO - APP 2: PLANO DE AÇÃO 5W2H (SUPABASE NUVEM)
+# ==============================================================================
+with aba_5w2h:
+    st.title("📊 Gestão Estratégica 5W2H - Lavo e Levo")
+    
+    # Busca unificada tratando possíveis variações de maiúsculas/minúsculas no nome da tabela
     status_contagem = {"Não Iniciado": 0, "Em Andamento": 0, "Concluído": 0}
+    acoes_data = buscar_supabase("Acoes") or buscar_supabase("acoes")
     
-    # 🔍 BUSCA DIRETA VIA CLIENT: Resgata as informações reais e antigas do banco
-    acoes = []
-    try:
-        supabase_client = get_supabase_client()
-        # Busca os dados ordenados por prazo utilizando a nova sintaxe da biblioteca
-        resposta = supabase_client.table("Acoes").select("*").order("prazo", desc=False).execute()
-        acoes = resposta.data
-    except Exception as e:
-        try:
-            # Fallback caso a tabela no banco use letras minúsculas 'acoes'
-            resposta = supabase_client.table("acoes").select("*").order("prazo", desc=False).execute()
-            acoes = resposta.data
-        except Exception:
-            st.info("💡 Aguardando novos registros na tabela de Plano de Ação.")
-
-    st.subheader("📊 Distribuição de Status (Monitoramento)")
-
-    # Preenche a contagem se houver ações retornadas do banco central
-    if acoes:
-        for a in acoes:
+    if acoes_data:
+        for a in acoes_data:
             status_atual = str(a.get('status', 'Não Iniciado')).strip().lower()
-            if "andamento" in status_atual:
+            if "andamento" in status_atual: 
                 status_contagem["Em Andamento"] += 1
-            elif "concluido" in status_atual or "concluído" in status_atual:
+            elif "concluido" in status_atual or "concluído" in status_atual: 
                 status_contagem["Concluído"] += 1
-            else:
+            else: 
                 status_contagem["Não Iniciado"] += 1
 
     df_pizza = pd.DataFrame(list(status_contagem.items()), columns=["Status", "Quantidade"])
-
     if df_pizza["Quantidade"].sum() > 0:
-        fig_pizza = px.pie(df_pizza, values='Quantidade', names='Status', hole=0.4,
-                           color='Status', color_discrete_map={'Não Iniciado': '#ff9999', 'Em Andamento': '#66b3ff', 'Concluído': '#99ff99'})
-        fig_pizza.update_layout(width=450, height=350, margin=dict(l=20, r=20, t=20, b=20),
-                                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
-        st.plotly_chart(fig_pizza, use_container_width=False)
+        fig = px.pie(
+            df_pizza, values='Quantidade', names='Status', hole=0.4, 
+            title="Distribuição Atual de Status (Monitoramento Coorporativo)",
+            color='Status', 
+            color_discrete_map={'Não Iniciado': '#ff9999', 'Em Andamento': '#66b3ff', 'Concluído': '#99ff99'}
+        )
+        fig.update_layout(width=450, height=350, margin=dict(l=20, r=20, t=20, b=20),
+                          legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
+        st.plotly_chart(fig, use_container_width=False)
     else:
-        st.info("💡 Nenhuma ação encontrada para gerar o gráfico. Cadastre uma nova ação abaixo!")
+        st.info("💡 Nenhuma ação estratégica encontrada no Supabase para exibir no gráfico.")
 
-    # 🆕 FORMULÁRIO DE CADASTRO CONECTADO VIA CLIENT
     st.write("---")
-    st.subheader("➕ Registrar Nova Ação (5W2H)")
-    
-    with st.form("form_cadastro_plano_acao"):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            desc = st.text_input("O que fazer? (Descrição da Ação):")
-            porque = st.text_input("Por que fazer? (Justificativa):")
-            onde = st.text_input("Onde será feito? (Local/Setor):")
-            resp = st.text_input("Quem vai fazer? (Nome/ID do Responsável):")
-        with col_f2:
-            prazo = st.date_input("Até quando? (Prazo):", datetime.date.today())
-            como = st.text_area("Como será feito? (Método/Processo):")
-            quando_det = st.text_input("Quando detalhado? (Frequência/Turno):")
-            status_nova = st.selectbox("Qual o status atual?", ["Não Iniciado", "Em Andamento", "Concluído"])
-            
-        botao_gravar_acao = st.form_submit_button("💾 Salvar Ação no Supabase")
+    st.subheader("➕ Registrar Nova Ação Estratégica (5W2H)")
+    with st.form("form_5w2h_novo", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            desc = st.text_input("O que fazer? (Descrição da Ação) *")
+            porque = st.text_input("Por que fazer? (Justificativa)")
+            onde = st.text_input("Onde será feito? (Setor/Unidade)")
+            resp = st.text_input("Quem vai fazer? (Nome ou ID do Responsável) *")
+        with col_b:
+            prazo = st.date_input("Até quando? (Prazo Limite)", datetime.date.today())
+            como = st.text_area("Como será feito? (Método/Processo)")
+            quando_det = st.text_input("Quando detalhado? (Frequência/Turno)")
+            st_atual = st.selectbox("Qual o status inicial?", ["Não Iniciado", "Em Andamento", "Concluído"])
         
-        if botao_gravar_acao:
+        if st.form_submit_button("💾 Gravar Plano Estratégico na Nuvem"):
             if desc and resp:
-                payload_nova_acao = {
-                    "descricao_acao": desc,
-                    "porque": porque,
-                    "onde": onde,
-                    "id_responsavel": resp,
-                    "prazo": prazo.strftime('%Y-%m-%d'),
-                    "como": como,
-                    "quando_detalhe": quando_det,
-                    "status": status_nova
+                payload = {
+                    "descricao_acao": desc, "porque": porque, "onde": onde, "id_responsavel": resp,
+                    "prazo": prazo.strftime('%Y-%m-%d'), "como": como, "quando_detalhe": quando_det, "status": st_atual
                 }
-                
-                try:
-                    supabase_client.table("Acoes").insert(payload_nova_acao).execute()
-                    st.success("🎉 Nova ação registrada com sucesso no Supabase!")
+                if inserir_supabase("Acoes", payload) or inserir_supabase("acoes", payload):
+                    st.success("🎉 Ação corporativa adicionada com sucesso ao banco remoto!")
                     st.rerun()
-                except Exception:
-                    try:
-                        supabase_client.table("acoes").insert(payload_nova_acao).execute()
-                        st.success("🎉 Nova ação registrada com sucesso no Supabase!")
-                        st.rerun()
-                    except Exception as e_ins:
-                        st.error(f"Erro ao salvar a ação: {str(e_ins)}")
-            else:
-                st.error("⚠️ Os campos 'Descrição' e 'Responsável' são obrigatórios!")
+                else:
+                    st.error("Falha ao salvar dados. Verifique a tabela e as credenciais no Supabase.")
+            else: 
+                st.error("⚠️ Os campos 'Descrição (O que fazer)' e 'Responsável' são estritamente obrigatórios.")
 
-    st.write("---")
-    st.subheader("📋 Ações Registradas")
-    if acoes:
-        df_tabela = pd.DataFrame(acoes)
+    if acoes_data:
+        st.write("---")
+        st.subheader("📋 Ações e Metas Registradas")
+        df_acoes = pd.DataFrame(acoes_data)
         colunas_esperadas = ["id_acao", "descricao_acao", "porque", "onde", "id_responsavel", "prazo", "como", "quando_detalhe", "status", "url_arquivo"]
-        df_tabela = df_tabela.reindex(columns=colunas_esperadas)
-        df_tabela.columns = ["ID", "Descrição (O que)", "Por que", "Onde", "ID Resp.", "Prazo", "Como", "Quando Det.", "Status", "Link Arquivo"]
-        st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+        df_acoes = df_acoes.reindex(columns=colunas_esperadas)
+        df_acoes.columns = ["ID", "Descrição (O que)", "Por que", "Onde", "ID Resp.", "Prazo", "Como", "Quando Det.", "Status", "Link Arquivo"]
+        st.dataframe(df_acoes, use_container_width=True, hide_index=True)
         
-        col_sel, col_btn_ed, col_btn_ex = st.columns(3)
+        col_sel, col_btn_ex = st.columns([2, 1])
         with col_sel:
-            # Tenta capturar a chave primária correta retornada pelo banco
-            lista_ids = [a.get('id_acao') if a.get('id_acao') is not None else a.get('id') for a in acoes]
-            id_selecionado = st.selectbox("Selecione o ID para gerenciar:", lista_ids, key="sel_id_aba1")
-        with col_btn_ed:
-            if st.button("✏️ Editar Selecionado", key="ed_bt_a1"):
-                st.session_state['edit_item'] = next((item for item in acoes if item.get("id_acao") == id_selecionado or item.get("id") == id_selecionado), None)
-                st.success(f"Item {id_selecionado} carregado!")
-        with col_btn_ex:
-            if st.button("🗑️ Excluir Selecionado", key="ex_bt_a1"):
-                try:
-                    supabase_client.table("Acoes").delete().eq("id_acao", id_selecionado).execute()
-                    st.success("Ação excluída com sucesso!")
+            lista_ids = [a.get('id_acao') if a.get('id_acao') is not None else a.get('id') for a in acoes_data]
+            id_selecionado = st.selectbox("Selecione o ID de uma ação para gerenciar:", lista_ids, key="sel_id_remocao_5w2h")
+               with col_btn_ex:
+            st.write("<br>", unsafe_allow_html=True)
+            if st.button("🗑️ Remover Ação Selecionada", use_container_width=True, key="btn_del_5w2h_remoto"):
+                if excluir_supabase("Acoes", "id_acao", id_selecionado) or excluir_supabase("acoes", "id", id_selecionado):
+                    st.warning(f"Ação #{id_selecionado} excluída permanentemente do Supabase!")
                     st.rerun()
-                except Exception:
-                    try:
-                        supabase_client.table("acoes").delete().eq("id", id_selecionado).execute()
-                        st.success("Ação excluída com sucesso!")
-                        st.rerun()
-                    except Exception as e_del:
-                        st.error(f"Erro ao excluir a ação: {str(e_del)}")
 
 # ==============================================================================
-# MÓDULO 2: CONTROLE DE LAVANDERIA (ALOCADO NA ABA 2)
+# CÓDIGO - APP 3: CONTROLE OPERACIONAL DA LAVANDERIA (POSTGRESQL NATIVO)
 # ==============================================================================
-with aba2:
-    st.header("🧼 Controle Operacional da Lavanderia")
+with aba_operacional:
+    st.title("🧼 Lançamento de Estações Operacionais (PostgreSQL)")
     
-    col_menu, col_data = st.columns(2)
-    with col_menu:
-        opcoes_l = ["Lavagem", "Lavados", "Secagem", "Pesagem", "Dobragem", "📊 Resumos e Análises", "🛠️ Histórico"]
-        menu_l = st.selectbox("Selecione a Estação de Trabalho:", options=opcoes_l, key="nav_lavanderia")
-    with col_data:
-        dt_global = st.date_input("Data do Lançamento:", datetime.date.today(), key="dt_lavanderia")
-        dt_str = dt_global.strftime('%Y-%m-%d')
+    if not db_postgres:
+        st.warning("⚠️ Módulo indisponível. Cadastre a string de conexão 'uri' em seus Secrets do Streamlit (banco_dados -> uri).")
+    else:
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            menu_op = st.selectbox(
+                "Selecione a Estação de Trabalho Atual:", 
+                ["Lavagem", "Lavados", "Secagem", "Pesagem", "Dobragem", "📊 Resumos e Estatísticas", "🛠️ Histórico"], 
+                key="op_set"
+            )
+        with col_e2:
+            dt_op = st.date_input("Data do Lançamento Operacional:", datetime.date.today(), key="dt_op_s")
+            dt_str = dt_op.strftime('%Y-%m-%d')
         
-    st.write("---")
+        st.markdown("---")
+        cursor_pg = db_postgres.cursor()
 
-    if menu_l == "Lavagem":
-        st.subheader("Lançamento - Setor de Lavagem")
-        c = st.text_input("Cliente", key="lav_c")
-        m = st.text_input("Máquina", key="lav_m")
-        p = st.text_input("Peso (ex: 45kg)", key="lav_p")
-        i = st.text_input("Horário Início", key="lav_i")
-        t = st.text_input("Horário Término", key="lav_t")
-        e = st.text_input("Executante", key="lav_e")
-        if st.button("Gravar Lavagem"):
-            payload = {"cliente": c, "data": dt_str, "maquina": m, "peso": p, "horario_inicio": i, "horario_termino": t, "executante": e}
-            if inserir_dados("lavagem", payload):
-                st.success("✅ Gravado com sucesso na nuvem!")
-            else:
-                st.error("Erro ao gravar dados no Supabase.")
+        # --- ESTAÇÃO: LAVAGEM ---
+        if menu_op == "Lavagem":
+            st.subheader("Lançamento - Setor de Lavagem")
+            c = st.text_input("Cliente", key="pg_lc")
+            m = st.text_input("Máquina Utilizada", key="pg_lm")
+            p = st.text_input("Peso Total (ex: 45kg)", key="pg_lp")
+            i = st.text_input("Horário Início", key="pg_li")
+            t = st.text_input("Horário Término", key="pg_lt")
+            if st.button("Gravar Turno de Lavagem", use_container_width=True):
+                try:
+                    cursor_pg.execute(
+                        "INSERT INTO lavagem (cliente, data, maquina, peso, horario_inicio, horario_termino, executante) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
+                        (c, dt_str, m, p, i, t, st.session_state['usuario_nome'])
+                    )
+                    db_postgres.commit()
+                    st.success("✅ Turno gravado com sucesso no PostgreSQL corporativo!")
+                except Exception as err:
+                    st.error(f"Erro ao inserir dados: {err}")
 
-    elif menu_l == "Lavados":
-        st.subheader("Lançamento - Setor de Lavados")
-        c = st.text_input("Cliente", key="lvd_c")
-        m = st.text_input("Máquina", key="lvd_m")
-        p = st.text_input("Peso", key="lvd_p")
-        i = st.text_input("Horário Início", key="lav_i_2")
-        t = st.text_input("Horário Término", key="lav_t_2")
-        e = st.text_input("Executante", key="lvd_e")
-        if st.button("Gravar Lavados"):
-            payload = {"cliente": c, "data": dt_str, "maquina": m, "peso": p, "horario_inicio": i, "horario_termino": t, "executante": e}
-            if inserir_dados("lavados", payload):
-                st.success("✅ Gravado com sucesso na nuvem!")
-            else:
-                st.error("Erro ao gravar dados no Supabase.")
+        # --- ESTAÇÃO: LAVADOS ---
+        elif menu_op == "Lavados":
+            st.subheader("Lançamento - Setor de Lavados")
+            c = st.text_input("Cliente", key="pg_lvd_c")
+            m = st.text_input("Máquina Utilizada", key="pg_lvd_m")
+            p = st.text_input("Peso", key="pg_lvd_p")
+            i = st.text_input("Horário Início", key="pg_lvd_i")
+            t = st.text_input("Horário Término", key="pg_lvd_t")
+            if st.button("Gravar Setor Lavados", use_container_width=True):
+                try:
+                    cursor_pg.execute(
+                        "INSERT INTO lavados (cliente, data, maquina, peso, horario_inicio, horario_termino, executante) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
+                        (c, dt_str, m, p, i, t, st.session_state['usuario_nome'])
+                    )
+                    db_postgres.commit()
+                    st.success("✅ Registro inserido na tabela de lavados!")
+                except Exception as err:
+                    st.error(f"Erro ao inserir dados: {err}")
 
-    elif menu_l == "Secagem":
-        st.subheader("Lançamento - Setor de Secagem")
-        m = st.text_input("Máquina", key="sec_m")
-        c = st.text_input("Cliente", key="sec_c")
-        ent = st.text_input("Horário Entrada", key="sec_ent")
-        sai = st.text_input("Horário Saída", key="sec_sai")
-        e = st.text_input("Executante", key="sec_e")
-        if st.button("Gravar Secagem"):
-            payload = {"maquina": m, "cliente": c, "data": dt_str, "horario_entrada": ent, "horario_saida": sai, "executante": e}
-            if inserir_dados("secagem", payload):
-                st.success("✅ Gravado com sucesso na nuvem!")
-            else:
-                st.error("Erro ao gravar dados no Supabase.")
+        # --- ESTAÇÃO: SECAGEM ---
+        elif menu_op == "Secagem":
+            st.subheader("Lançamento - Setor de Secagem")
+            m = st.text_input("Máquina Utilizada", key="pg_sec_m")
+            c = st.text_input("Cliente", key="pg_sec_c")
+            ent = st.text_input("Horário Entrada", key="pg_sec_ent")
+            sai = st.text_input("Horário Saída", key="pg_sec_sai")
+            if st.button("Gravar Turno de Secagem", use_container_width=True):
+                try:
+                    cursor_pg.execute(
+                        "INSERT INTO secagem (maquina, cliente, data, horario_entrada, horario_saida, executante) VALUES (%s, %s, %s, %s, %s, %s)", 
+                        (m, c, dt_str, ent, sai, st.session_state['usuario_nome'])
+                    )
+                    db_postgres.commit()
+                    st.success("✅ Ciclo de secagem indexado!")
+                except Exception as err:
+                    st.error(f"Erro ao salvar ciclo: {err}")
 
-    elif menu_l == "Pesagem":
-        st.subheader("Lançamento - Setor de Pesagem")
-        c = st.text_input("Cliente", key="pes_c")
-        p = st.text_input("Pesagem", key="pes_p")
-        e = st.text_input("Executante", key="pes_e")
-        tipo = st.radio("Tipo de Operação", ["Normal", "Relave"], key="pes_tipo")
-        if st.button("Gravar Pesagem"):
-            payload = {"cliente": c, "data": dt_str, "pesagem": p, "executante": e, "tipo_operacao": tipo}
-            if inserir_dados("pesagem", payload):
-                st.success("✅ Gravado com sucesso na nuvem!")
-            else:
-                st.error("Erro ao gravar dados no Supabase.")
+        # --- ESTAÇÃO: PESAGEM ---
+        elif menu_op == "Pesagem":
+            st.subheader("Lançamento - Setor de Pesagem")
+            c = st.text_input("Cliente", key="pg_pes_c")
+            p = st.text_input("Pesagem Registrada", key="pg_pes_p")
+            tipo = st.radio("Tipo de Operação:", ["Normal", "Relave"], key="pg_pes_tipo", horizontal=True)
+            if st.button("Gravar Registro de Pesagem", use_container_width=True):
+                try:
+                    cursor_pg.execute(
+                        "INSERT INTO pesagem (cliente, data, pesagem, executante, tipo_operacao) VALUES (%s, %s, %s, %s, %s)", 
+                        (c, dt_str, p, st.session_state['usuario_nome'], tipo)
+                    )
+                    db_postgres.commit()
+                    st.success("✅ Pesagem sincronizada com sucesso!")
+                except Exception as err:
+                    st.error(f"Erro ao processar pesagem: {err}")
 
-    elif menu_l == "Dobragem":
-        st.subheader("Lançamento - Setor de Dobragem")
-        c = st.text_input("Cliente", key="dob_c")
-        e = st.text_input("Executante", key="dob_e")
-        st.markdown("### Contagem de Itens Dobrados")
-        qtds = {}
-        for it in ITENS_DOBRAGEM:
-            qtds[it] = st.number_input(f"Qtd {it}:", min_value=0, step=1, key=f"d_{it}")
-        if st.button("Gravar Dobragem"):
-            cols_it = [it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM]
-            payload = {"cliente": c, "data": dt_str, "executante": e}
-            for it in ITENS_DOBRAGEM:
-                campo_banco = it.lower().replace("ç", "c").replace("ã", "a")
-                payload[campo_banco] = int(qtds[it])
-            if inserir_dados("dobragem", payload):
-                st.success("✅ Gravado com sucesso na nuvem!")
-            else:
-                st.error("Erro ao gravar dados no Supabase.")
-    elif menu_l == "📊 Resumos e Análises":
-        st.subheader("📊 Painel Estatístico e Resumos")
-        filtro = st.text_input("🔍 Filtrar por Cliente (Vazio para todos)", key="an_filtro")
-        try:
-            setores = ["lavagem", "lavados", "secagem", "pesagem", "dobragem"]
-            df_geral = []
-            for s in setores:
-                dados_s = buscar_dados(s)
-                if dados_s:
-                    df_sec = pd.DataFrame(dados_s)
-                    # Cria a coluna sector para compatibilidade com o relatório original
-                    df_sec['sector'] = s
-                    if filtro and 'cliente' in df_sec.columns:
-                        df_sec = df_sec[df_sec['cliente'].str.contains(filtro, case=False, na=False)]
-                    if not df_sec.empty and 'executante' in df_sec.columns:
-                        df_geral.append(df_sec[['executante', 'sector']])
-            
-            st.subheader("1. Quantidade de Operações por Funcionário / Setor")
-            if df_geral:
-                res = pd.concat(df_geral, ignore_index=True).groupby(["executante", "sector"]).size().unstack(fill_value=0)
-                res["Total Geral"] = res.sum(axis=1)
-                st.dataframe(res, use_container_width=True)
-            else:
-                st.info("Nenhum dado encontrado para gerar relatórios operacionais.")
+        # --- ESTAÇÃO: DOBRAGEM ---
+        elif menu_op == "Dobragem":
+            st.subheader("Lançamento - Setor de Dobragem")
+            c = st.text_input("Cliente", key="pg_dob_c")
+            st.markdown("##### Contagem Manual de Itens Dobrados:")
+            qtds_pg = {}
+            for item in ITENS_DOBRAGEM:
+                qtds_pg[item] = st.number_input(f"Quantidade de {item}:", min_value=0, step=1, key=f"pg_d_{item}")
+            if st.button("Gravar Lançamento de Dobragem", use_container_width=True):
+                try:
+                    cols_sql = [it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM]
+                    colunas_str = ", ".join(["cliente", "data", "executante"] + cols_sql)
+                    placeholders = ", ".join(["%s"] * (3 + len(ITENS_DOBRAGEM)))
+                    valores = [c, dt_str, st.session_state['usuario_nome']] + [int(qtds_pg[it]) for it in ITENS_DOBRAGEM]
+                    cursor_pg.execute(f"INSERT INTO dobragem ({colunas_str}) VALUES ({placeholders})", valores)
+                    db_postgres.commit()
+                    st.success("✅ Contagem de dobragem arquivada e integrada!")
+                except Exception as err:
+                    st.error(f"Erro ao processar dobragem: {err}")
+
+        # --- ESTAÇÃO: 📊 RESUMOS E ESTATÍSTICAS ---
+        elif menu_op == "📊 Resumos e Estatísticas":
+            st.subheader("📊 Painel Estatístico e Resumos")
+            filtro_cl = st.text_input("🔍 Filtrar por Nome do Cliente (Vazio para trazer todos)", key="pg_an_filtro")
+            try:
+                setores = ["lavagem", "lavados", "secagem", "pesagem", "dobragem"]
+                df_geral = []
+                for s in setores:
+                    query = f"SELECT executante, '{s}' as sector FROM {s}"
+                    if filtro_cl: 
+                        query += f" WHERE cliente ILIKE '%{filtro_cl}%'"
+                    df_sec = pd.read_sql_query(query, db_postgres)
+                    if not df_sec.empty: 
+                        df_geral.append(df_sec)
                 
-            st.subheader("2. Total de Peças Dobradas por Cliente e Executante")
-            dados_dob = buscar_dados("dobragem")
-            if dados_dob:
-                df_dob = pd.DataFrame(dados_dob)
-                if filtro and 'cliente' in df_dob.columns:
-                    df_dob = df_dob[df_dob['cliente'].str.contains(filtro, case=False, na=False)]
+                st.subheader("1. Quantidade de Operações por Funcionário / Setor")
+                if df_geral:
+                    res = pd.concat(df_geral, ignore_index=True).groupby(["executante", "sector"]).size().unstack(fill_value=0)
+                    res["Total Geral"] = res.sum(axis=1)
+                    st.dataframe(res, use_container_width=True)
+                else:
+                    st.info("Nenhum registro encontrado no Postgres para gerar relatórios operacionais.")
                 
-                cols_banco = [it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM]
-                # Garante que as colunas existem antes de agrupar
-                cols_existentes = [c for c in cols_banco if c in df_dob.columns]
-                
-                if not df_dob.empty and 'cliente' in df_dob.columns and 'executante' in df_dob.columns:
+                st.subheader("2. Total de Peças Dobradas por Cliente e Executante")
+                cols_sql = ", ".join([it.lower().replace("ç", "c").replace("ã", "a") for it in ITENS_DOBRAGEM])
+                query_dob = f"SELECT cliente, executante, {cols_sql} FROM dobragem"
+                if filtro_cl:
+                    query_dob += f" WHERE cliente ILIKE '%{filtro_cl}%'"
+                df_dob = pd.read_sql_query(query_dob, db_postgres)
+                if not df_dob.empty:
                     mapeamento = {it.lower().replace("ç", "c").replace("ã", "a"): it for it in ITENS_DOBRAGEM}
                     df_dob = df_dob.rename(columns=mapeamento)
-                    cols_exibicao = [mapeamento[c] for c in cols_existentes]
-                    
-                    res_pecas = df_dob.groupby(["cliente", "executante"])[cols_exibicao].sum()
+                    res_pecas = df_dob.groupby(["cliente", "executante"]).sum()
                     res_pecas["Total de Peças"] = res_pecas.sum(axis=1)
                     st.dataframe(res_pecas, use_container_width=True)
                 else:
-                    st.info("Nenhum registro de dobras correspondente encontrado.")
-            else:
-                st.info("Nenhum registro de dobras encontrado.")
-        except Exception as err:
-            st.error(f"Erro nos relatórios: {err}")
+                    st.info("Nenhum dado de dobras localizado no banco de dados.")
+            except Exception as e:
+                st.error(f"Erro ao processar painéis analíticos: {e}")
 
-    elif menu_l == "🛠️ Histórico":
-        st.subheader("🛠️ Gerenciamento e Correção de Lançamentos")
-        s = st.selectbox("Selecione o Setor para visualização:", ["lavagem", "lavados", "secagem", "pesagem", "dobragem"])
-        f_cliente = st.text_input("🔍 Filtrar por Cliente (Opcional):", key="hist_fc")
-        f_colab = st.text_input("👤 Filtrar por Colaborador / Executante (Opcional):", key="hist_fe")
-        
-        try:
-            dados_hist = buscar_dados(s)
-            if dados_hist:
-                df_hist = pd.DataFrame(dados_hist)
-                if f_cliente and 'cliente' in df_hist.columns:
-                    df_hist = df_hist[df_hist['cliente'].str.contains(f_cliente, case=False, na=False)]
-                if f_colab and 'executante' in df_hist.columns:
-                    df_hist = df_hist[df_hist['executante'].str.contains(f_colab, case=False, na=False)]
-                    
-                if not df_hist.empty:
-                    st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        # --- ESTAÇÃO: 🛠️ HISTÓRICO ---
+        elif menu_op == "🛠️ Histórico":
+            st.subheader("🛠️ Monitoramento de Lançamentos Salvos")
+            s = st.selectbox("Selecione a Tabela para Consulta:", ["lavagem", "lavados", "secagem", "pesagem", "dobragem"], key="sel_s_hist_pg")
+            f_cliente = st.text_input("🔍 Filtrar por Cliente (Opcional):", key="hist_fc_pg")
+            
+            query_hist = f"SELECT * FROM {s} WHERE 1=1"
+            if f_cliente:
+                query_hist += f" AND cliente ILIKE '%%{f_cliente}%%'"
+            query_hist += " ORDER BY id DESC LIMIT 50"
+            
+                        try:
+                df_dados = pd.read_sql_query(query_hist, db_postgres)
+                if not df_dados.empty:
+                    st.dataframe(df_dados, use_container_width=True, hide_index=True)
                 else:
-                    st.info("Nenhum registro encontrado no histórico para os filtros aplicados.")
-            else:
-                st.info("Nenhum registro encontrado para este setor.")
-        except Exception as err:
-            st.error(f"Erro ao carregar histórico: {err}")
+                    st.info(f"Nenhum registro encontrado na tabela '{s}' do PostgreSQL.")
+            except Exception as err:
+                st.error(f"Erro ao carregar histórico: {err}")
 
 # ==============================================================================
-# MÓDULO 3: GESTÃO DE MANUTENÇÃO & PT (ALOCADO NA ABA 3)
+# CÓDIGO - APP 4: GESTÃO DE MANUTENÇÃO INDUSTRIAL & PT (SUPABASE NUVEM)
 # ==============================================================================
-with aba3:
-    st.header("⚙️ Gestão de Manutenção & Emissão de PT")
+with aba_manutencao:
+    st.title("⚙️ Sistema União de Manutenção e Permissões de Trabalho")
     
-    menu_m = st.selectbox("Selecione a Ação de Manutenção:", [
-        "🔍 Gerenciar Máquinas (Abas 1 & 2)",
-        "📅 Ordens de Serviço (OS) (Aba 3)",
-        "📜 Histórico de Trocas (Aba 4)",
-        "⚠️ Emissão de PT (Aba 5)"
-    ], key="nav_manutencao_interna")
+    menu_m = st.selectbox(
+        "Ação de Engenharia/Manutenção:", 
+        ["🔍 Gerenciar Parque de Máquinas", "📅 Ordens de Serviço (OS)", "⚠️ Emissão de Permissão de Trabalho (PT)"],
+        key="nav_manutencao_mestre"
+    )
     
     st.write("---")
     
-    equipamentos = buscar_dados("maquinas")
-    todos_agendamentos = buscar_dados("planejamento")
-    historico_lista = buscar_dados("historico")
+    # Captura em tempo real os dados de tabelas cruzadas no Supabase
+    equipamentos = buscar_supabase("maquinas")
+    todos_agendamentos = buscar_supabase("planejamento")
 
-    if menu_m == "🔍 Gerenciar Máquinas (Abas 1 & 2)":
-        st.subheader("🔍 Gerenciamento de Equipamentos")
-        
-        if st.session_state.editando_maquina_id is not None:
-            st.subheader("✏️ Editar Equipamento Registrado")
-            mq_editar = next((m for m in equipamentos if str(m["id"]) == str(st.session_state.editando_maquina_id)), None)
-            
-            if mq_editar:
-                with st.form("form_editar_maquina"):
-                    st.info(f"Editando Tag: {mq_editar.get('id')}")
-                    edit_nome = st.text_input("Nome do Equipamento:", value=mq_editar.get("nome", ""))
-                    edit_local = st.text_input("Localização / Setor:", value=mq_editar.get("localizacao", ""))
-                    edit_crit = st.selectbox("Criticidade:", ["Baixa", "Média", "Alta"], index=["Baixa", "Média", "Alta"].index(mq_editar.get("criticidade", "Baixa")) if mq_editar.get("criticidade") in ["Baixa", "Média", "Alta"] else 0)
-                    edit_sem = st.text_area("Checklist Semanal:", value=mq_editar.get("check_semanal", ""))
-                    edit_mes = st.text_area("Checklist Mensal:", value=mq_editar.get("check_mensal", ""))
-                    edit_ano = st.text_area("Checklist Anual:", value=mq_editar.get("check_anual", ""))
-                    btn_salvar_mq = st.form_submit_button("💾 Salvar Alterações")
-                    
-                if btn_salvar_mq:
-                    payload = {"nome": edit_nome, "localizacao": edit_local, "criticidade": edit_crit, "check_semanal": edit_sem, "check_mensal": edit_mes, "check_anual": edit_ano}
-                    if atualizar_dados("maquinas", payload, "id", mq_editar["id"]):
-                        st.success("🎉 Equipamento atualizado com sucesso!")
-                        st.session_state.editando_maquina_id = None
+    # --- SUBMÓDULO: GERENCIAR PARQUE DE MÁQUINAS ---
+    if menu_m == "🔍 Gerenciar Parque de Máquinas":
+        st.subheader("➕ Cadastrar Nova Máquina Industrial")
+        with st.form("form_nova_maq_mestre", clear_on_submit=True):
+            id_eq = st.text_input("Tag do Equipamento (Ex: MQ-99):").strip()
+            nome_eq = st.text_input("Nome do Equipamento:").strip()
+            local_eq = st.text_input("Setor / Localização:")
+            crit_eq = st.selectbox("Criticidade Operacional:", ["Baixa", "Média", "Alta"])
+            if st.form_submit_button("Salvar Equipamento na Nuvem"):
+                if id_eq and nome_eq:
+                    payload = {"id": id_eq, "nome": nome_eq, "localizacao": local_eq, "criticidade": crit_eq}
+                    if inserir_supabase("maquinas", payload):
+                        st.success("🎉 Máquina incluída com sucesso na base corporativa!")
+                        st.import_util = True
                         st.rerun()
-                    else:
-                        st.error("Erro ao salvar atualizações.")
-                
-                if st.button("❌ Cancelar Edição", key="cnc_ed_mq"):
-                    st.session_state.editando_maquina_id = None
-                    st.rerun()
-        else:
-            st.subheader("➕ Cadastrar Nova Máquina")
-            with st.form("form_cadastro_direto"):
-                id_eq = st.text_input("Tag do Equipamento (Ex: EQ-003):").strip()
-                nome_eq = st.text_input("Nome do Equipamento:").strip()
-                local_eq = st.text_input("Localização / Setor:")
-                crit_eq = st.selectbox("Criticidade:", ["Baixa", "Média", "Alta"])
-                st.markdown("##### 📜 Ações Preventivas")
-                c_sem = st.text_area("Checklist Semanal:", "1. Verificar nível de óleo; 2. Limpeza.")
-                c_mes = st.text_area("Checklist Mensal:", "1. Troca de filtros.")
-                c_ano = st.text_area("Checklist Anual:", "1. Revisão preventiva.")
-                botao_salvar = st.form_submit_button("Salvar Novo Equipamento")
-                
-            if botao_salvar and id_eq and nome_eq:
-                payload = {"id": id_eq, "nome": nome_eq, "localizacao": local_eq, "criticidade": crit_eq, "check_semanal": c_sem, "check_mensal": c_mes, "check_anual": c_ano}
-                if inserir_dados("maquinas", payload):
-                    st.success("🎉 Equipamento saved com sucesso!")
-                    st.rerun()
                 else:
-                    st.error("Erro ao inserir equipamento no banco de dados.")
+                    st.error("⚠️ Tag e Nome do Equipamento são obrigatórios.")
 
         st.markdown("---")
-        st.subheader("📋 Lista de Equipamentos Registrados")
-        if not equipamentos:
-            st.info("Nenhuma máquina encontrada na tabela 'maquinas' do Supabase.")
+        st.subheader("📋 Equipamentos Monitorados Ativos (Supabase)")
+        if equipamentos:
+            df_maquinas = pd.DataFrame(equipamentos)
+            st.dataframe(df_maquinas[["id", "nome", "localizacao", "criticidade"]], use_container_width=True, hide_index=True)
         else:
-            for mq in equipamentos:
-                st.write(f"🔹 **[{mq.get('id')}] {mq.get('nome')}** | Setor: {mq.get('localizacao')} | Criticidade: {mq.get('criticidade')}")
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    if st.button(f"✏️ Editar {mq.get('id')}", key=f"ed_mq_{mq.get('id')}"):
-                        st.session_state.editando_maquina_id = mq.get('id')
-                        st.rerun()
-                with col_m2:
-                    if st.button(f"🗑️ Excluir {mq.get('id')}", key=f"ex_mq_{mq.get('id')}"):
-                        if excluir_dados("maquinas", "id", mq.get('id')):
-                            st.warning("Equipamento excluído permanentemente!")
-                            st.rerun()
-                st.write("---")
+            st.info("Nenhum equipamento cadastrado na tabela 'maquinas'.")
 
-    elif menu_m == "📅 Ordens de Serviço (OS) (Aba 3)":
-        st.subheader("📅 Planejamento & Ordens de Serviço (OS)")
+    # --- SUBMÓDULO: ORDENS DE SERVIÇO (OS) ---
+    elif menu_m == "📅 Ordens de Serviço (OS)":
+        st.subheader("📅 Abrir Nova Ordem de Serviço Preventiva/Corretiva")
+        with st.form("form_gerar_os_mestre", clear_on_submit=True):
+            lista_maquinas = [m["nome"] for m in equipamentos] if equipamentos else []
+            if not lista_maquinas:
+                st.warning("Cadastre uma máquina no submódulo anterior antes de gerar uma OS.")
+                st.stop()
+                
+            eq_alvo = st.selectbox("Selecione o Equipamento Alvo:", lista_maquinas)
+            periodo = st.selectbox("Frequência Planejada:", ["Semanal", "Mensal", "Anual"])
+            prazo_manut = st.date_input("Data Limite Estimada:", datetime.date.today())
+            escopo = st.text_area("Escopo / Descrição Detalhada do Serviço:")
+            seg_obs = st.text_area("Observações Iniciais de Segurança:", "Seguir os procedimentos padrão de Lockout/Tagout (LOTO).")
+            
+            if st.form_submit_button("💾 Despachar OS Ativa"):
+                payload = {
+                    "equipamento": eq_alvo, 
+                    "periodo": periodo, 
+                    "data_prevista": prazo_manut.strftime("%d/%m/%Y"), 
+                    "pecas": escopo, 
+                    "status": "Pendente",
+                    "seguranca": seg_obs
+                }
+                if inserir_supabase("planejamento", payload):
+                    st.success("🎉 Ordem de Serviço pendente publicada com sucesso!")
+                    st.import_util = True
+                    st.rerun()
+
+        st.markdown("---")
+        st.subheader("📋 Painel Unificado de Planejamentos e OS")
+        if todos_agendamentos:
+            df_os = pd.DataFrame(todos_agendamentos)
+            st.dataframe(df_os, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma Ordem de Serviço (OS) ativa gravada na base.")
+
+    # --- SUBMÓDULO: EMISSÃO DE PERMISSÃO DE TRABALHO (PT) ---
+    elif menu_m == "⚠️ Emissão de Permissão de Trabalho (PT)":
+        st.subheader("⚠️ Emissão Corporativa de Permissão de Trabalho (PT)")
+        ordens_pendentes = [p for p in todos_agendamentos if p.get('status') == "Pendente"]
         
-        if st.session_state.editando_os_id is not None:
-            st.subheader("📝 Editar Ordem de Serviço Ativa")
-            os_editar = next((item for item in todos_agendamentos if str(item["id"]) == str(st.session_state.editando_os_id)), None)
+        if not ordens_pendentes:
+            st.info("Não existem ordens de serviço pendentes no sistema para requerer uma PT.")
+        else:
+            opcoes_os = {f"OS #{p['id']} - {p['equipamento']} ({p.get('periodo')})": p for p in ordens_pendentes}
+            os_sel = st.selectbox("Selecione a OS para Liberação e Análise de Risco:", list(opcoes_os.keys()))
+            os_dados = opcoes_os[os_sel]
             
-            if os_editar:
-                with st.form("form_editar_os"):
-                    edit_titulo = st.text_input("Título / Descrição da OS:", value=os_editar.get("titulo", ""))
-                    edit_status = st.selectbox("Status:", ["Pendente", "Em Andamento", "Concluído"], index=["Pendente", "Em Andamento", "Concluído"].index(os_editar.get("status", "Pendente")) if os_editar.get("status") in ["Pendente", "Em Andamento", "Concluído"] else 0)
-                    btn_salvar_os = st.form_submit_button("💾 Atualizar OS")
+            with st.form("form_pt_mestre_remoto"):
+                emitente = st.text_input("Supervisor / Emitente da PT:", value=st.session_state['usuario_nome'])
+                executante = st.text_input("Técnico Executante / Mecânico Responsável:")
+                empresa_exec = st.selectbox("Vínculo do Técnico:", ["Própria (Interna)", "Terceirizada / Contratada"])
+                
+                st.markdown("##### 🚨 Análise Preventiva de Riscos:")
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    r_altura = st.checkbox("Trabalho em Altura (NR-35)")
+                    r_eletrico = st.checkbox("Risco Elétrico (NR-10)")
+                with col_r2:
+                    r_confinado = st.checkbox("Espaço Confinado (NR-33)")
+                    r_quente = st.checkbox("Trabalho a Quente (Solda/Esmeril)")
                     
-                if btn_salvar_os:
-                    payload_os = {"titulo": edit_titulo, "status": edit_status}
-                    if atualizar_dados("planejamento", payload_os, "id", os_editar["id"]):
-                        st.success("🎉 Ordem de Serviço updated com sucesso!")
-                        st.session_state.editando_os_id = None
-                        st.rerun()
+                st.markdown("##### 🛡️ Medidas Protetivas de Controle:")
+                c_loto = st.checkbox("Bloqueio e Etiquetagem Físicos Ativos (Lockout/Tagout)", value=True)
+                c_delim = st.checkbox("Isolamento e Sinalização da Área Concluídos", value=True)
+                
+                observacoes_seg = st.text_area("Observações Adicionais de Campo:", value=str(os_dados.get('seguranca', '')))
+                
+                if st.form_submit_button("Validar e Emitir Laudo de PT"):
+                    if not executante:
+                        st.error("Por favor, preencha o nome do técnico executante antes de emitir.")
                     else:
-                        st.error("Erro ao atualizar a Ordem de Serviço no banco.")
-            
-            if st.button("❌ Cancelar Edição OS"):
-                st.session_state.editando_os_id = None
-                st.rerun()
-        else:
-            st.info("Nenhuma Ordem de Serviço selecionada para edição ativa.")
-            if todos_agendamentos:
-                df_os = pd.DataFrame(todos_agendamentos)
-                st.dataframe(df_os, use_container_width=True)
-            else:
-                st.info("Nenhum registro de OS agendado no banco.")
+                        st.success("✅ Permissão de Trabalho gerada com sucesso na memória do sistema!")
+                        
+                        conteudo_pt = f"""
+                        <div class="pt-box">
+                            <h2 class="pt-title">⚠️ PERMISSÃO DE TRABALHO (PT) - REGISTRO INDUSTRIAL</h2>
+                            <p><b>VINCULADO À:</b> OS #{os_dados.get('id')} | <b>EQUIPAMENTO:</b> {os_dados.get('equipamento')}</p>
+                            <p><b>SERVIÇO ESCALAR:</b> {os_dados.get('pecas')}</p>
+                            <hr style='border-top: 1px dashed #FF0000;'>
+                            <p><b>EMITENTE/SUPERVISOR:</b> {emitente} | <b>EXECUTANTE:</b> {executante} ({empresa_exec})</p>
+                            <p><b>DATA DA EMISSÃO:</b> {datetime.date.today().strftime('%d/%m/%Y')}</p>
+                            <hr style='border-top: 1px dashed #FF0000;'>
+                            <p><b>RISCOS DETECTADOS:</b><br>
+                            {"- Trabalho em Altura (NR-35)<br>" if r_altura else ""}
+                            {"- Risco Elétrico / Energias Vivas (NR-10)<br>" if r_eletrico else ""}
+                            {"- Espaço Confinado (NR-33)<br>" if r_confinado else ""}
+                            {"- Trabalho a Quente / Centelhas<br>" if r_quente else ""}
+                            </p>
+                            <p><b>CONTROLES EXECUTADOS:</b><br>
+                            {"[X] Lockout / Tagout Ativo<br>" if c_loto else ""}
+                            {"[X] Área Isolada e Delimitada<br>" if c_delim else ""}
+                            </p>
+                            <p><b>OBSERVAÇÕES:</b> {observacoes_seg}</p>
+                            <br><br>
+                            <p style='text-align: center;'>________________________________________<br>Assinatura Digital do Supervisor (Liberado)</p>
+                        </div>
+                        """
+                        st.markdown(conteudo_pt, unsafe_allow_html=True)
+                        
+                        st.download_button(
+                            label="🖨️ Baixar Arquivo de Texto Desformatado para Impressão",
+                            data=conteudo_pt.replace("<br>", "\n").replace("<p>", "").replace("</p>", "\n").replace("<div>", "").replace("</div>", "").replace("<b>", "").replace("</b>", "").replace("<hr style='border-top: 1px dashed #FF0000;'>", "-----------------------"),
+                            file_name=f"Permissao_Trabalho_OS_{os_dados.get('id')}.txt",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
 
-    elif menu_m == "📜 Histórico de Trocas (Aba 4)":
-        st.subheader("📜 Histórico de Trocas de Componentes")
-        if historico_lista:
-            df_hist = pd.DataFrame(historico_lista)
-            st.dataframe(df_hist, use_container_width=True)
-        else:
-            st.info("Nenhum histórico de trocas encontrado.")
+if __name__ == "__main__":
+    pass
 
-    elif menu_m == "⚠️ Emissão de PT (Aba 5)":
-        st.subheader("⚠️ Emissão de Permissão de Trabalho (PT)")
-        st.write("Módulo de segurança operacional para liberação de atividades.")
-        with st.form("form_pt"):
-            local_pt = st.text_input("Local da Atividade:")
-            resp_pt = st.text_input("Responsável Técnico:")
-            riscos = st.multiselect("Riscos Detectados:", ["Elétrico", "Trabalho em Altura", "Espaço Confinado", "Químico"])
-            emitir = st.form_submit_button("Emitir Documento de PT")
-            if emitir:
-                st.success("PT gerada operacionalmente com sucesso!")
+
 
