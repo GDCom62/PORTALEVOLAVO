@@ -139,26 +139,53 @@ if not st.session_state['logado']:
             
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
-        st.markdown("<h2 style='text-align: center; margin-top: 10px;'>Acesso ao Sistema</h2>", unsafe_allow_html=True)
-        with st.form("formulario_login_unificado"):
-            email_input = st.text_input("Usuário ou E-mail")
-            senha_input = st.text_input("Senha", type="password")
-            botao_entrar = st.form_submit_button("Entrar", use_container_width=True)
-            
-        if botao_entrar:
-            if email_input.strip() == "admin@lavolevo.com" and senha_input.strip() == "LavoLevo2026":
-                st.session_state.update({'logado': True, 'usuario_nome': "Administrador Geral", 'usuario_funcao': "Diretoria"})
-                st.success("🎉 Acesso liberado!")
-                st.rerun()
-            else:
-                res_sqlite = consultar_sqlite("SELECT nome, funcao FROM operadores WHERE nome=:u AND senha=:s", {"u": email_input, "s": senha_input})
-                if not res_sqlite.empty:
-                    st.session_state.update({'logado': True, 'usuario_nome': res_sqlite.iloc[0]['nome'], 'usuario_funcao': res_sqlite.iloc[0]['funcao']})
-                    st.success(f"Bem-vindo, {st.session_state['usuario_nome']}!")
-                    st.rerun()
-                else:
-                    st.error("❌ Credenciais incorretas. Tente novamente.")
-    st.stop()
+       # CSS para Design Elegante, Flutuante e Arredondado
+st.markdown("""
+    <style>
+    /* Arredondamento global de inputs e tabelas */
+    .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { 
+        border-radius: 12px !important; 
+    }
+    
+    /* Configuração da barra lateral */
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #e0e0e0; 
+    }
+    
+    /* Estilização dos blocos e formulários padrão */
+    [data-testid="stForm"], div[data-testid="stExpander"], .stMetric { 
+        border-radius: 15px !important; 
+        border: 1px solid #eef2f6 !important; 
+        background-color: #ffffff; 
+        padding: 20px !important; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    }
+    h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
+    
+    /* --- NOVO: Estilo para Menu Flutuante e Arredondado --- */
+    div.block-container div[data-testid="stHorizontalBlock"] {
+        background: #ffffff;
+        padding: 15px 25px !important;
+        border-radius: 20px !important;
+        box-shadow: 0 10px 25px rgba(30, 58, 138, 0.1) !important; /* Sombra azulada suave */
+        margin-bottom: 25px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    /* Caixa estandardizada para Permissões de Trabalho */
+    .pt-box { 
+        border: 3px double #FF0000; 
+        padding: 20px; 
+        background-color: #FFF5F5; 
+        color: #000000; 
+        font-family: monospace; 
+        border-radius: 5px; 
+    }
+    .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
+    </style>
+    """, unsafe_allow_html=True)
+
 
 # ==============================================================================
 # 5. ESTRUTURAÇÃO DE ABAS MESTRE (OS 4 APPS INTEGRADOS)
