@@ -191,9 +191,7 @@ if not st.session_state['logado']:
         border-radius: 12px !important; 
     }
        
-    
-    </style>
-    """, unsafe_allow_html=True)
+     """, unsafe_allow_html=True)
 
 
 # ==============================================================================
