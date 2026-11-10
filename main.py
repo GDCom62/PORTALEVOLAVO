@@ -78,7 +78,7 @@ st.markdown(""")
     }
     .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
     </style>
-    """, unsafe_allow_html=True)
+    (""", unsafe_allow_html=True)
 
 # ==============================================================================
 # 2. INICIALIZAÇÃO DE CREDENCIAIS E CONEXÕES (SQLite, Supabase, PostgreSQL)
