@@ -191,11 +191,6 @@ if not st.session_state['logado']:
         border-radius: 12px !important; 
     }
     
-    /* 2. Configuração elegante da barra lateral */
-    [data-testid="stSidebar"] { 
-        background-color: #f8f9fa; 
-        border-right: 1px solid #e0e0e0; 
-    }
     
     /* 3. Títulos e Tipografia */
     h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
