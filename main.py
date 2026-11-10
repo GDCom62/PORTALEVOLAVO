@@ -15,8 +15,9 @@ from fpdf import FPDF
 import plotly.express as px
 import psycopg2
 from supabase import create_client, Client
+
 # ==============================================================================
-# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS (REVISADO)
+# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS (REVISADO SEM ERROS)
 # ==============================================================================
 st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro", layout="wide", page_icon="🧼")
 
