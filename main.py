@@ -711,7 +711,7 @@ with aba_operacional:
                 query_hist += f" AND cliente ILIKE '%%{f_cliente}%%'"
             query_hist += " ORDER BY id DESC LIMIT 50"
             
-                        try:
+            try:
                 df_dados = pd.read_sql_query(query_hist, db_postgres)
                 if not df_dados.empty:
                     st.dataframe(df_dados, use_container_width=True, hide_index=True)
