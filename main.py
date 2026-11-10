@@ -23,20 +23,62 @@ st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro
 
 st.markdown("""
     <style>
-    .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { border-radius: 12px !important; }
-    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e0e0e0; }
-    [data-testid="stForm"], div[data-testid="stExpander"], .stMetric { 
-        border-radius: 15px !important; border: 1px solid #eef2f6 !important; 
-        background-color: #ffffff; padding: 20px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    /* 1. Arredondamento global de botões, inputs e tabelas */
+    .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { 
+        border-radius: 12px !important; 
     }
+    
+    /* 2. Configuração elegante da barra lateral */
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #e0e0e0; 
+    }
+    
+    /* 3. Títulos e Tipografia */
     h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
-    .pt-box { border: 3px double #FF0000; padding: 20px; background-color: #FFF5F5; color: #000000; font-family: monospace; border-radius: 5px; }
+    
+    /* 4. ESTILO MESTRE: Formulários, Expanders, Métricas e TELA DE LOGIN Flutuantes */
+    [data-testid="stForm"], div[data-testid="stExpander"], .stMetric { 
+        border-radius: 20px !important; 
+        border: 1px solid #e2e8f0 !important; 
+        background-color: #ffffff !important; 
+        padding: 30px !important; 
+        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important; /* Sombra flutuante premium */
+        margin-bottom: 25px !important;
+    }
+    
+    /* 5. Menu Horizontal de Navegação Flutuante e Arredondado */
+    div.block-container div[data-testid="stHorizontalBlock"] {
+        background: #ffffff;
+        padding: 15px 25px !important;
+        border-radius: 20px !important;
+        box-shadow: 0 10px 25px rgba(30, 58, 138, 0.08) !important; 
+        margin-bottom: 25px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    /* 6. CONTAINERS DOS GRÁFICOS: Aplica o efeito flutuante em containers com borda ativa */
+    div[data-testid="stVComponent"] > div[data-margin="true"], div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 20px !important;
+        border: 1px solid #e2e8f0 !important;
+        background-color: #ffffff !important;
+        padding: 25px !important;
+        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important;
+        margin-bottom: 25px !important;
+    }
+    
+    /* 7. Layout Industrial para Permissões de Trabalho (PT) */
+    .pt-box { 
+        border: 3px double #FF0000; 
+        padding: 20px; 
+        background-color: #FFF5F5; 
+        color: #000000; 
+        font-family: monospace; 
+        border-radius: 5px; 
+    }
     .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
-
-# Lote Fixo de Itens para Contagem de Dobragem
-ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
 
 # ==============================================================================
 # 2. INICIALIZAÇÃO DE CREDENCIAIS E CONEXÕES (SQLite, Supabase, PostgreSQL)
