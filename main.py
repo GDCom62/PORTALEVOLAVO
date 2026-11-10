@@ -537,7 +537,7 @@ with aba_5w2h:
         with col_sel:
             lista_ids = [a.get('id_acao') if a.get('id_acao') is not None else a.get('id') for a in acoes_data]
             id_selecionado = st.selectbox("Selecione o ID de uma ação para gerenciar:", lista_ids, key="sel_id_remocao_5w2h")
-               with col_btn_ex:
+        with col_btn_ex:
             st.write("<br>", unsafe_allow_html=True)
             if st.button("🗑️ Remover Ação Selecionada", use_container_width=True, key="btn_del_5w2h_remoto"):
                 if excluir_supabase("Acoes", "id_acao", id_selecionado) or excluir_supabase("acoes", "id", id_selecionado):
