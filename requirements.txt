@@ -1,7 +1,10 @@
 streamlit
 pandas
+sqlalchemy
+fpdf
 plotly
-requests
 psycopg2-binary
 supabase
+requests
+xlsxwriter
 
