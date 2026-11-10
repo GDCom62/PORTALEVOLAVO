@@ -139,7 +139,7 @@ if not st.session_state['logado']:
             
     col_b1, col_b2, col_b3 = st.columns(3)
     with col_b2:
-    st.markdown("""
+    st.markdown(""")
     <style>
     /* 1. Arredondamento global de botões, inputs e tabelas */
     .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { 
