@@ -15,9 +15,8 @@ from fpdf import FPDF
 import plotly.express as px
 import psycopg2
 from supabase import create_client, Client
-
 # ==============================================================================
-# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS
+# 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS (REVISADO)
 # ==============================================================================
 st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro", layout="wide", page_icon="🧼")
 
@@ -43,7 +42,7 @@ st.markdown("""
         border: 1px solid #e2e8f0 !important; 
         background-color: #ffffff !important; 
         padding: 30px !important; 
-        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important; /* Sombra flutuante premium */
+        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important; 
         margin-bottom: 25px !important;
     }
     
@@ -78,7 +77,10 @@ st.markdown("""
     }
     .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
     </style>
-    (""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+# Lote Fixo de Itens para Contagem de Dobragem
+ITENS_DOBRAGEM = ["Lençol", "Fronha", "Capote", "Camisola", "Oleado", "Calça", "Camisa", "Cobertor", "Colcha", "Toalha", "Traçado"]
 
 # ==============================================================================
 # 2. INICIALIZAÇÃO DE CREDENCIAIS E CONEXÕES (SQLite, Supabase, PostgreSQL)
