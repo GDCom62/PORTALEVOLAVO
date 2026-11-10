@@ -21,7 +21,7 @@ from supabase import create_client, Client
 # ==============================================================================
 st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro", layout="wide", page_icon="🧼")
 
-st.markdown("""
+st.markdown(""")
     <style>
     /* 1. Arredondamento global de botões, inputs e tabelas */
     .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { 
