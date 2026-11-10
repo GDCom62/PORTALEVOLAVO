@@ -190,31 +190,7 @@ if not st.session_state['logado']:
     .stButton>button, .stTextInput>div>div>input, .stSelectbox>div>div>div, .stNumberInput>div>div>input, .stDataEditor { 
         border-radius: 12px !important; 
     }
-    
-    
-    /* 3. Títulos e Tipografia */
-    h1, h2, h3 { color: #1E3A8A; font-family: 'Segoe UI', sans-serif; }
-    
-    /* 4. ESTILO MESTRE: Formulários, Expanders, Métricas e TELA DE LOGIN Flutuantes */
-    [data-testid="stForm"], div[data-testid="stExpander"], .stMetric { 
-        border-radius: 20px !important; 
-        border: 1px solid #e2e8f0 !important; 
-        background-color: #ffffff !important; 
-        padding: 30px !important; 
-        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important; /* Sombra flutuante premium */
-        margin-bottom: 25px !important;
-    }
-    
-    /* 5. Menu Horizontal de Navegação Flutuante e Arredondado */
-    div.block-container div[data-testid="stHorizontalBlock"] {
-        background: #ffffff;
-        padding: 15px 25px !important;
-        border-radius: 20px !important;
-        box-shadow: 0 10px 25px rgba(30, 58, 138, 0.08) !important; 
-        margin-bottom: 25px !important;
-        border: 1px solid #e2e8f0 !important;
-    }
-    
+       
     /* 6. CONTAINERS DOS GRÁFICOS: Efeito flutuante em caixas de borda nativas */
     div[data-testid="stElementContainer"] > div[data-testid="stCard"] {
         border-radius: 20px !important;
