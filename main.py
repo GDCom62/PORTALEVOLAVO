@@ -191,26 +191,7 @@ if not st.session_state['logado']:
         border-radius: 12px !important; 
     }
        
-    /* 6. CONTAINERS DOS GRÁFICOS: Efeito flutuante em caixas de borda nativas */
-    div[data-testid="stElementContainer"] > div[data-testid="stCard"] {
-        border-radius: 20px !important;
-        border: 1px solid #e2e8f0 !important;
-        background-color: #ffffff !important;
-        padding: 20px !important;
-        box-shadow: 0 15px 35px rgba(30, 58, 138, 0.08) !important;
-        margin-bottom: 25px !important;
-    }
     
-    /* 7. Layout Industrial para Permissões de Trabalho (PT) */
-    .pt-box { 
-        border: 3px double #FF0000; 
-        padding: 20px; 
-        background-color: #FFF5F5; 
-        color: #000000; 
-        font-family: monospace; 
-        border-radius: 5px; 
-    }
-    .pt-title { text-align: center; color: #FF0000; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
