@@ -4,6 +4,7 @@ import datetime
 from datetime import datetime as dt_internal
 import io
 import requests
+import base64
 
 # Bancos de Dados e Gráficos
 from sqlalchemy import create_engine, text
@@ -14,7 +15,7 @@ from supabase import create_client, Client
 # ==============================================================================
 # 1. CONFIGURAÇÃO GLOBAL DA PÁGINA E ESTILOS CSS
 # ==============================================================================
-st.set_page_config(page_title="Central de Operações Integrada - Lavanderia Pro", layout="wide", page_icon="🧼")
+st.set_page_config(page_title="Portal Levo & Lavo - Central de Operações", layout="wide", page_icon="🧼")
 
 st.markdown("""
     <style>
@@ -109,7 +110,6 @@ def init_sqlite_db():
 init_sqlite_db()
 
 # --- CONEXÃO 2: Supabase (Módulo Lavo e Levo 5W2H e Manutenção) ---
-# ATENÇÃO: Substitua pela URL real do seu projeto no Supabase (ex: https://supabase.co)
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_UtC2lBc6OwE0ZrWFpL7U9g_VuTjjjSw")
 
@@ -171,9 +171,6 @@ for key, val in estados_iniciais.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# Função auxiliar para converter imagem em Base64 (para fixar no canto da tela)
-import base64
-
 def obter_imagem_base64(caminho_arquivo):
     try:
         with open(caminho_arquivo, "rb") as img_file:
@@ -189,7 +186,6 @@ if not st.session_state['entrou_portal']:
     col_e1, col_centro, col_e2 = st.columns([1, 2, 1])
     
     with col_centro:
-        # Exibe o logo principal centralizado
         logo_principal_b64 = obter_imagem_base64("logo.png")
         if logo_principal_b64:
             st.markdown(
@@ -214,7 +210,7 @@ if not st.session_state['entrou_portal']:
                 st.session_state['entrou_portal'] = True
                 st.rerun()
 
-    # Logo do desenvolvedor fixo no canto inferior direito (acima do Manage app)
+    # Logo do desenvolvedor fixo no canto inferior direito (perto do Manage app)
     logo_dev_b64 = obter_imagem_base64("logo1.png")
     if logo_dev_b64:
         st.markdown(
@@ -270,12 +266,169 @@ if not st.session_state['logado']:
             st.rerun()
     st.stop()
 
-
 # ==============================================================================
-# 5. CABEÇALHO E ABAS PRINCIPAIS DO SISTEMA (CORREÇÃO APLICADA)
+# 5. CABEÇALHO E ABAS PRINCIPAIS DO SISTEMA
 # ==============================================================================
 col_top1, col_top2 = st.columns([5, 1])
 with col_top1:
+    st.markdown(f"👤 **Operador:** {st.session_state['usuario_nome']} | **Perfil:** {st.session_state['usuario_funcao']}")
+with col_top2:
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state['logado'] = False
+        st.rerun()
+
+aba_hospitalar, aba_5w2h, aba_operacional, aba_manutencao = st.tabs([
+    "🏥 Lavanderia Hospitalar", 
+    "📊 Plano 5W2H", 
+    "🧼 Controle Operacional", 
+    "⚙️ Manutenção & PT"
+])
+
+# ==============================================================================
+# CÓDIGO - APP 1: LAVANDERIA HOSPITALAR PRO (FLUXO COMPLETO REVISADO)
+# ==============================================================================
+CAPACIDADE_LAVADORAS = {
+    "Lavadora 01 (120kg)": 120.0,
+    "Lavadora 02 (120kg)": 120.0,
+    "Lavadora 03 (100kg)": 100.0,
+    "Lavadora 04 (60kg)": 60.0,
+    "Lavadora 05 (50kg)": 50.0
+}
+
+NIVEIS_SUJIDADE = {
+    "Muita Sujidade": "Nível Máximo de Lavagem",
+    "Pouca Sujidade": "Nível Médio de Lavagem",
+    "Quase Nenhuma Sujidade": "Nível Baixo de Lavagem"
+}
+
+executar_sqlite('''CREATE TABLE IF NOT EXISTS lotes_hosp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, hospital TEXT, peso_entrada REAL, maquina_lavar TEXT, 
+    sujidade TEXT, nivel_lavagem TEXT, status TEXT, entrada_lavagem TEXT, saida_lavagem TEXT, 
+    op_area_suja TEXT, secadora TEXT, entrada_secagem TEXT, saida_secagem TEXT, 
+    op_area_limpa TEXT, entrada_dobra TEXT, saida_dobra TEXT, peso_saida REAL, 
+    gaiola_num TEXT, motorista_nome TEXT, saida_motorista TEXT
+)''')
+
+executar_sqlite('''CREATE TABLE IF NOT EXISTS contagem_dobra (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, lote_id INTEGER, hospital TEXT, 
+    colaborador TEXT, categoria TEXT, quantidade INTEGER, data_hora TEXT
+)''')
+
+with aba_hospitalar:
+    st.title("🏥 Gestão Lavanderia Hospitalar Pro")
+    menu_h = st.radio(
+        "Módulos de Fluxo Hospitalar:", 
+        [
+            "Painel Geral", 
+            "1. Área Suja (Lavagem)", 
+            "2. Barreira e Secagem", 
+            "3. Dobra e Passadeira", 
+            "4. Gaiolas e Expedição", 
+            "5. Relatórios e Produtividade", 
+            "⚙️ Gestão Interna"
+        ], 
+        horizontal=True,
+        key="menu_fluxo_hospitalar_v2"
+    )
+
+    # --- PAINEL GERAL ---
+    if menu_h == "Painel Geral":
+        df_l = consultar_sqlite("SELECT id, hospital, status, maquina_lavar, nivel_lavagem, entrada_lavagem FROM lotes_hosp WHERE status != 'Entregue'")
+        if not df_l.empty:
+            st.markdown("### 📈 Lotes em Processamento Ativo")
+            st.dataframe(df_l, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum lote hospitalar em processamento ativo no momento.")
+
+    # --- 1. ÁREA SUJA (LAVAGEM COM TRAVA DE PESO E SUJIDADE) ---
+    elif menu_h == "1. Área Suja (Lavagem)":
+        st.header("📥 1. Área Suja - Recebimento e Lavagem")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            maq_sel = st.selectbox("Escolha a Lavadora:", list(CAPACIDADE_LAVADORAS.keys()), key="sel_lav_v2")
+            cap_maxima = CAPACIDADE_LAVADORAS[maq_sel]
+        with col_m2:
+            suj_sel = st.selectbox("Grau de Sujidade do Lote:", list(NIVEIS_SUJIDADE.keys()), key="sel_suj_v2")
+            nivel_auto = NIVEIS_SUJIDADE[suj_sel]
+            st.info(f"⚙️ **Ciclo Definido:** {nivel_auto}")
+
+        peso_acumulado = sum(item['p'] for item in st.session_state.tambor)
+        peso_restante = cap_maxima - peso_acumulado
+
+        st.progress(min(peso_acumulado / cap_maxima, 1.0))
+        st.caption(f"Capacidade: **{peso_acumulado:.1f} kg** usados / **{cap_maxima:.1f} kg** máximo (Disponível: **{max(peso_restante, 0):.1f} kg**)")
+
+        with st.form("form_tambor_v2", clear_on_submit=True):
+            c_f1, c_f2 = st.columns(2)
+            with c_f1:
+                hosp_n = st.selectbox("Hospital de Origem:", ["Hospital A", "Hospital B", "Hospital C"])
+            with c_f2:
+                peso_in = st.number_input("Peso da Carga (kg):", min_value=0.5, max_value=cap_maxima, step=0.5)
+            
+            if st.form_submit_button("➕ Adicionar ao Tambor"):
+                if (peso_acumulado + peso_in) > cap_maxima:
+                    st.error(f"🚫 Capacidade excedida! Máximo permitido: {cap_maxima} kg.")
+                else:
+                    st.session_state.tambor.append({"h": hosp_n, "p": peso_in, "s": suj_sel, "n": nivel_auto})
+                    st.rerun()
+
+        if st.session_state.tambor:
+            df_t = pd.DataFrame(st.session_state.tambor)
+            df_t.columns = ["Hospital", "Peso (kg)", "Sujidade", "Nível de Lavagem"]
+            st.dataframe(df_t, use_container_width=True, hide_index=True)
+            
+            c_btn1, c_btn2 = st.columns(2)
+            if c_btn1.button("🗑️ Limpar Tambor", use_container_width=True):
+                st.session_state.tambor = []
+                st.rerun()
+            if c_btn2.button("🚀 INICIAR LAVAGEM E CENTRIFUGAÇÃO", type="primary", use_container_width=True):
+                dt_agora = dt_internal.now().strftime("%Y-%m-%d %H:%M:%S")
+                for item in st.session_state.tambor:
+                    executar_sqlite(
+                        """INSERT INTO lotes_hosp (hospital, peso_entrada, maquina_lavar, sujidade, nivel_lavagem, status, entrada_lavagem, op_area_suja) 
+                        VALUES (:h, :p, :m, :s, :n, 'Lavando', :dt, :op)""",
+                        {"h": item['h'], "p": item['p'], "m": maq_sel, "s": item['s'], "n": item['n'], "dt": dt_agora, "op": st.session_state['usuario_nome']}
+                    )
+                st.session_state.tambor = []
+                st.success("✅ Lavagem iniciada e horário registrado!")
+                st.rerun()
+
+    # --- 2. BARREIRA SANITÁRIA & SECAGEM ---
+    elif menu_h == "2. Barreira e Secagem":
+        st.header("🔥 2. Barreira Sanitária e Secadoras (Área Limpa)")
+        col_s1, col_s2 = st.columns(2)
+        
+        with col_s1:
+            st.subheader("📥 Recolher da Lavadora")
+            df_lavando = consultar_sqlite("SELECT id, hospital, maquina_lavar, peso_entrada FROM lotes_hosp WHERE status='Lavando'")
+            if not df_lavando.empty:
+                opcoes_lav = {f"Lote #{r['id']} | {r['hospital']} ({r['peso_entrada']}kg) - {r['maquina_lavar']}": r['id'] for _, r in df_lavando.iterrows()}
+                lote_rec_sel = st.selectbox("Lote Centrifugado:", list(opcoes_lav.keys()), key="sel_rec_barreira")
+                secadora_dest = st.selectbox("Secadora Destino:", ["Secadora 01 (100kg)", "Secadora 02 (100kg)", "Secadora 03 (60kg)", "Secadora 04 (50kg)"])
+                
+                if st.button("✅ Iniciar Secagem", use_container_width=True):
+                    dt_agora = dt_internal.now().strftime("%Y-%m-%d %H:%M:%S")
+                    executar_sqlite(
+                        "UPDATE lotes_hosp SET status='Secando', saida_lavagem=:dt, entrada_secagem=:dt, secadora=:sec, op_area_limpa=:op WHERE id=:id",
+                        {"dt": dt_agora, "sec": secadora_dest, "op": st.session_state['usuario_nome'], "id": opcoes_lav[lote_rec_sel]}
+                    )
+                    st.rerun()
+            else:
+                st.info("Nenhuma roupa lavando no momento.")
+
+        with col_s2:
+            st.subheader("📤 Finalizar Secagem")
+            df_secando = consultar_sqlite("SELECT id, hospital, secadora FROM lotes_hosp WHERE status='Secando'")
+            if not df_secando.empty:
+                opcoes_sec = {f"Lote #{r['id']} | {r['hospital']} - {r['secadora']}": r['id'] for _, r in df_secando.iterrows()}
+                lote_fim_sec = st.selectbox("Lote Seco:", list(opcoes_sec.keys()), key="sel_fim_sec")
+                if st.button("🧺 Liberar p/ Dobra", use_container_width=True):
+                    dt_agora = dt_internal.now().strftime("%Y-%m-%d %H:%M:%S")
+                    executar_sqlite("UPDATE lotes_hosp SET status='Aguardando Dobra', saida_secagem=:dt, entrada_dobra=:dt WHERE id=:id", {"dt": dt_agora, "id": opcoes_sec[lote_fim_sec]})
+                    st.rerun()
+            else:
+                st.info("Nenhuma secadora em operação.")
+
     # --- 3. DOBRA E PASSADEIRA (CONTAGEM INDIVIDUAL POR COLABORADOR) ---
     elif menu_h == "3. Dobra e Passadeira":
         st.header("🧺 3. Dobra e Passadeira - Contagem por Colaborador")
@@ -435,7 +588,6 @@ with col_top1:
             for col_dt in ['entrada_lavagem', 'saida_lavagem', 'entrada_secagem', 'saida_secagem', 'entrada_dobra', 'saida_dobra']:
                 df_lotes[col_dt + '_dt'] = pd.to_datetime(df_lotes[col_dt], errors='coerce')
 
-            # CORREÇÃO APLICADA: Cálculo de min_lavagem incluído
             df_lotes['min_lavagem'] = (df_lotes['saida_lavagem_dt'] - df_lotes['entrada_lavagem_dt']).dt.total_seconds() / 60.0
             df_lotes['min_secagem'] = (df_lotes['saida_secagem_dt'] - df_lotes['entrada_secagem_dt']).dt.total_seconds() / 60.0
             df_lotes['min_dobra'] = (df_lotes['saida_dobra_dt'] - df_lotes['entrada_dobra_dt']).dt.total_seconds() / 60.0
@@ -971,7 +1123,7 @@ with aba_manutencao:
                         st.session_state['pt_os_id'] = os_dados.get('id')
                         st.success("✅ Permissão de Trabalho gerada com sucesso!")
 
-            # CORREÇÃO APLICADA: Exibição e Download fora do st.form
+            # Exibição e Download fora do st.form
             if st.session_state.get('pt_gerada_html'):
                 st.markdown(st.session_state['pt_gerada_html'], unsafe_allow_html=True)
                 st.download_button(
