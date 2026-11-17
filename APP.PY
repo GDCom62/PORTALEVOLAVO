@@ -162,6 +162,7 @@ if "banco_dados" in st.secrets and "uri" in st.secrets["banco_dados"]:
 # 3. CONTROLE DE ESTADO DA SESSÃO GLOBAL
 # ==============================================================================
 estados_iniciais = {
+    'entrou_portal': False,
     'logado': False, 'usuario_nome': "", 'usuario_funcao': "", 'tambor': [],
     'editando_maquina_id': None, 'editando_os_id': None, 'edit_item_5w2h': None,
     'pt_gerada_html': None, 'pt_gerada_txt': None, 'pt_os_id': None
@@ -170,9 +171,72 @@ for key, val in estados_iniciais.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
+# Função auxiliar para converter imagem em Base64 (para fixar no canto da tela)
+import base64
+
+def obter_imagem_base64(caminho_arquivo):
+    try:
+        with open(caminho_arquivo, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception:
+        return None
+
 # ==============================================================================
-# 4. TELA DE AUTENTICAÇÃO UNIFICADA (Apenas 1 Login para o App Todo)
+# 4. PÁGINA DE ENTRADA (BOAS-VINDAS) + TELA DE AUTENTICAÇÃO UNIFICADA
 # ==============================================================================
+if not st.session_state['entrou_portal']:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col_e1, col_centro, col_e2 = st.columns([1, 2, 1])
+    
+    with col_centro:
+        # Exibe o logo principal centralizado
+        logo_principal_b64 = obter_imagem_base64("logo.png")
+        if logo_principal_b64:
+            st.markdown(
+                f"<div style='text-align: center;'><img src='data:image/png;base64,{logo_principal_b64}' width='180'></div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown("<h1 style='text-align: center; font-size: 60px;'>🧼</h1>", unsafe_allow_html=True)
+            
+        st.markdown(
+            "<h1 style='text-align: center; color: #1E3A8A; margin-top: 15px; letter-spacing: 2px;'>PORTAL LEVO & LAVO</h1>",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "<p style='text-align: center; color: #64748b; font-size: 16px; margin-bottom: 30px;'>Central de Operações Integradas & Gestão Hospitalar</p>",
+            unsafe_allow_html=True
+        )
+        
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1.5, 1])
+        with col_btn2:
+            if st.button("🚀 Entrar no Portal", type="primary", use_container_width=True):
+                st.session_state['entrou_portal'] = True
+                st.rerun()
+
+    # Logo do desenvolvedor fixo no canto inferior direito (acima do Manage app)
+    logo_dev_b64 = obter_imagem_base64("logo1.png")
+    if logo_dev_b64:
+        st.markdown(
+            f"""
+            <div style="position: fixed; bottom: 55px; right: 20px; z-index: 9999; text-align: right; background: rgba(255,255,255,0.85); padding: 8px 12px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                <span style="font-size: 10px; color: #64748b; display: block; margin-bottom: 2px;">Desenvolvido por</span>
+                <img src="data:image/png;base64,{logo_dev_b64}" width="85">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """
+            <div style="position: fixed; bottom: 55px; right: 20px; z-index: 9999; color: #94a3b8; font-size: 12px;">
+                Dev: logo1.png
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    st.stop()
+
 if not st.session_state['logado']:
     col_v1, col_v2, col_logo, col_v4, col_v5 = st.columns([30, 30, 10, 30, 30])
     with col_logo:
@@ -200,7 +264,12 @@ if not st.session_state['logado']:
                     st.rerun()
                 else:
                     st.error("❌ Credenciais incorretas. Tente novamente.")
+                    
+        if st.button("⬅️ Voltar à Tela Inicial", use_container_width=True):
+            st.session_state['entrou_portal'] = False
+            st.rerun()
     st.stop()
+
 
 # ==============================================================================
 # 5. CABEÇALHO E ABAS PRINCIPAIS DO SISTEMA (CORREÇÃO APLICADA)
