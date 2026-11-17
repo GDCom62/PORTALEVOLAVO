@@ -208,13 +208,21 @@ if not st.session_state['logado']:
 # ==============================================================================
 # CÓDIGO - APP 1: LAVANDERIA HOSPITALAR PRO (FLUXO COMPLETO REVISADO)
 # ==============================================================================
-CAPACIDADE_LAVADORAS = {
-    "Lavadora 01 (120kg)": 120.0,
-    "Lavadora 02 (120kg)": 120.0,
-    "Lavadora 03 (100kg)": 100.0,
-    "Lavadora 04 (60kg)": 60.0,
-    "Lavadora 05 (50kg)": 50.0
-}
+# Cabeçalho com botão de Sair e criação das Abas principais
+col_top1, col_top2 = st.columns([5, 1])
+with col_top1:
+    st.markdown(f"👤 **Operador:** {st.session_state['usuario_nome']} | **Perfil:** {st.session_state['usuario_funcao']}")
+with col_top2:
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state['logado'] = False
+        st.rerun()
+
+aba_hospitalar, aba_5w2h, aba_operacional, aba_manutencao = st.tabs([
+    "🏥 Lavanderia Hospitalar", 
+    "📊 Plano 5W2H", 
+    "🧼 Controle Operacional", 
+    "⚙️ Manutenção & PT"
+])
 
 NIVEIS_SUJIDADE = {
     "Muita Sujidade": "Nível Máximo de Lavagem",
