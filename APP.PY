@@ -527,6 +527,10 @@ with aba_hospitalar:
                 Peso_Entrada_Total_kg=('peso_entrada', 'sum'),
                 Peso_Saida_Total_kg=('peso_saida', 'sum'),
                 Tempo_Medio_Lavagem_min=('min_lavagem', 'mean'),
+                    df_lotes['min_lavagem'] = (df_lotes['saida_lavagem_dt'] - df_lotes['entrada_lavagem_dt']).dt.total_seconds() / 60.0
+                    df_lotes['min_secagem'] = (df_lotes['saida_secagem_dt'] - df_lotes['entrada_secagem_dt']).dt.total_seconds() / 60.0
+                    df_lotes['min_dobra'] = (df_lotes['saida_dobra_dt'] - df_lotes['entrada_dobra_dt']).dt.total_seconds() / 60.0
+
                 Tempo_Medio_Secagem_min=('min_secagem', 'mean')
             ).reset_index().round(1)
             st.dataframe(res_hosp, use_container_width=True, hide_index=True)
