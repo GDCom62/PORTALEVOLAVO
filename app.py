@@ -303,11 +303,18 @@ NIVEIS_SUJIDADE = {
 
 executar_sqlite('''CREATE TABLE IF NOT EXISTS lotes_hosp (
     id INTEGER PRIMARY KEY AUTOINCREMENT, hospital TEXT, peso_entrada REAL, maquina_lavar TEXT, 
-    sujidade TEXT, nivel_lavagem TEXT, status TEXT, entrada_lavagem TEXT, saida_lavagem TEXT, 
+    sujidade TEXT, nivel_lavagem TEXT, status TEXT, data_pesagem TEXT, entrada_lavagem TEXT, saida_lavagem TEXT, 
     op_area_suja TEXT, secadora TEXT, entrada_secagem TEXT, saida_secagem TEXT, 
     op_area_limpa TEXT, entrada_dobra TEXT, saida_dobra TEXT, peso_saida REAL, 
     gaiola_num TEXT, motorista_nome TEXT, saida_motorista TEXT
 )''')
+
+# Garante que bancos antigos recebam a nova coluna sem perder dados
+try:
+    executar_sqlite("ALTER TABLE lotes_hosp ADD COLUMN data_pesagem TEXT")
+except Exception:
+    pass
+
 
 executar_sqlite('''CREATE TABLE IF NOT EXISTS contagem_dobra (
     id INTEGER PRIMARY KEY AUTOINCREMENT, lote_id INTEGER, hospital TEXT, 
@@ -333,7 +340,7 @@ with aba_hospitalar:
 
     # --- PAINEL GERAL ---
     if menu_h == "Painel Geral":
-        df_l = consultar_sqlite("SELECT id, hospital, status, maquina_lavar, nivel_lavagem, entrada_lavagem FROM lotes_hosp WHERE status != 'Entregue'")
+        df_l = consultar_sqlite("SELECT id, hospital, status, maquina_lavar, data_pesagem, entrada_lavagem FROM lotes_hosp WHERE status != 'Entregue'")
         if not df_l.empty:
             st.markdown("### 📈 Lotes em Processamento Ativo")
             st.dataframe(df_l, use_container_width=True, hide_index=True)
@@ -358,41 +365,7 @@ with aba_hospitalar:
         st.progress(min(peso_acumulado / cap_maxima, 1.0))
         st.caption(f"Capacidade: **{peso_acumulado:.1f} kg** usados / **{cap_maxima:.1f} kg** máximo (Disponível: **{max(peso_restante, 0):.1f} kg**)")
 
-        with st.form("form_tambor_v2", clear_on_submit=True):
-            c_f1, c_f2 = st.columns(2)
-            with c_f1:
-                hosp_n = st.selectbox("Hospital de Origem:", ["Hospital A", "Hospital B", "Hospital C"])
-            with c_f2:
-                peso_in = st.number_input("Peso da Carga (kg):", min_value=0.5, max_value=cap_maxima, step=0.5)
-            
-            if st.form_submit_button("➕ Adicionar ao Tambor"):
-                if (peso_acumulado + peso_in) > cap_maxima:
-                    st.error(f"🚫 Capacidade excedida! Máximo permitido: {cap_maxima} kg.")
-                else:
-                    st.session_state.tambor.append({"h": hosp_n, "p": peso_in, "s": suj_sel, "n": nivel_auto})
-                    st.rerun()
-
-        if st.session_state.tambor:
-            df_t = pd.DataFrame(st.session_state.tambor)
-            df_t.columns = ["Hospital", "Peso (kg)", "Sujidade", "Nível de Lavagem"]
-            st.dataframe(df_t, use_container_width=True, hide_index=True)
-            
-            c_btn1, c_btn2 = st.columns(2)
-            if c_btn1.button("🗑️ Limpar Tambor", use_container_width=True):
-                st.session_state.tambor = []
-                st.rerun()
-            if c_btn2.button("🚀 INICIAR LAVAGEM E CENTRIFUGAÇÃO", type="primary", use_container_width=True):
-                dt_agora = dt_internal.now().strftime("%Y-%m-%d %H:%M:%S")
-                for item in st.session_state.tambor:
-                    executar_sqlite(
-                        """INSERT INTO lotes_hosp (hospital, peso_entrada, maquina_lavar, sujidade, nivel_lavagem, status, entrada_lavagem, op_area_suja) 
-                        VALUES (:h, :p, :m, :s, :n, 'Lavando', :dt, :op)""",
-                        {"h": item['h'], "p": item['p'], "m": maq_sel, "s": item['s'], "n": item['n'], "dt": dt_agora, "op": st.session_state['usuario_nome']}
-                    )
-                st.session_state.tambor = []
-                st.success("✅ Lavagem iniciada e horário registrado!")
-                st.rerun()
-
+        with st.form("form_tambor_v2"
     # --- 2. BARREIRA SANITÁRIA & SECAGEM ---
     elif menu_h == "2. Barreira e Secagem":
         st.header("🔥 2. Barreira Sanitária e Secadoras (Área Limpa)")
